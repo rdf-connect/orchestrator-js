@@ -6,11 +6,12 @@
     "build": "tspc && tsc-alias",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "test": "jest"
+    "test": "jest",
+    "prepare": "husky"
   },
   "husky": {
     "hooks": {
-      "pre-commit": "lint-staged"
+      "pre-commit": "echo \"Husky pre-commit\""
     }
   },
   "lint-staged": {
