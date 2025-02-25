@@ -1,1 +1,2 @@
+echo Husky testing!
 npm test
