@@ -1,0 +1,49 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
+
+<MyChannel> a rdfc:Channel.
+<> a rdfc:Pipeline;
+  rdfc:dependency <>;
+  rdfc:processor <MyEpicProcessor>;
+  rdfc:runner <MyEpicJsRunner>.
+
+<MyEpicProcessor> a rdfc:ShaclValidator;
+  rdfc:input <MyChannel>.
+
+rdfc:ShaclValidator a rdfc:JsProcessor;
+  rdfc:entrypoint <./>;
+  rdfc:file <./lib/processor.js>.
+
+<MyEpicJsRunner> a rdfc:Runner;
+  rdfc:handles rdfc:JsProcessor;
+  rdfc:command "node lib/runner.js";
+  rdfc:processor_definition <JsProcessorShape>.
+
+[ ] a sh:NodeShape;
+  sh:targetClass <JsProcessorShape>;
+  sh:property [
+    sh:path rdfc:entrypoint;
+    sh:name "location";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:path rdfc:file;
+    sh:name "file";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:ShaclValidator;
+  sh:property [
+    sh:path rdfc:input;
+    sh:name "input";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ].
+

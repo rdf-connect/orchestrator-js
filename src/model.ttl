@@ -1,0 +1,78 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
+
+_:id sh:path ( );
+  sh:name "id";
+  sh:minCount 1;
+  sh:maxCount 1;
+  sh:datatype xsd:any.
+
+[ ] a sh:NodeShape;
+  sh:targetClass <Pipeline>;
+  sh:property _:id, [
+    sh:path rdfc:dependency;
+    sh:name "dependencies";
+    sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:processor;
+    sh:name "processors";
+    sh:class <Processor>;
+  ], [
+    sh:path rdfc:runner;
+    sh:name "runners";
+    sh:class <Runner>;
+  ].
+
+# [ ] a sh:NodeShape;
+#   sh:targetClass <Runner>;
+#   sh:property _:id, [
+#     sh:path rdf:type;
+#     sh:name "type";
+#     sh:minCount 1;
+#     sh:maxCount 1;
+#     sh:class <RunnerType>;
+#   ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <Runner>;
+  sh:property _:id, [
+    sh:path rdfc:handles;
+    sh:name "handles";
+    sh:minCount 1;
+    sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:command;
+    sh:name "command";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:processor_definition;
+    sh:name "processor_definition";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <Processor>;
+  sh:property _:id, [
+    sh:path rdf:type;
+    sh:name "type";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class <ProcessorType>;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <ProcessorType>;
+  sh:property _:id, [
+    sh:path rdf:type;
+    sh:name "runner_type";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
+

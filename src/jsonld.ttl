@@ -1,0 +1,83 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+
+[ ] a sh:NodeShape;
+  sh:targetClass <RdfThing>;
+  sh:property [
+    sh:name "id";
+    sh:path ( );
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:any;
+  ], [
+    sh:name "quads";
+    sh:path ( );
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfl:CBD;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <Property>;
+  sh:property [
+    sh:name "name";
+    sh:path sh:name;
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ], [
+    sh:name "id";
+    sh:path ( );
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "path";
+    sh:path sh:path;
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class <RdfThing>;
+  ], [
+    sh:name "clazz";
+    sh:path sh:class;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "datatype";
+    sh:path sh:datatype;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "minCount";
+    sh:path sh:minCount;
+    sh:maxCount 1;
+    sh:datatype xsd:integer;
+  ], [
+    sh:name "maxCount";
+    sh:path sh:maxCount;
+    sh:maxCount 1;
+    sh:datatype xsd:integer;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <Processor>;
+  sh:property [
+    sh:name "target";
+    sh:path sh:targetClass;
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "id";
+    sh:path ( );
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "properties";
+    sh:path sh:property;
+    sh:class <Property>;
+  ].
+

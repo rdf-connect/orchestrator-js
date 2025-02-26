@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package mypackage;
+
+import "google/protobuf/empty.proto";
+
+message Processor {
+  /* The URI of the Processor. */
+  string uri = 1;
+  /* The processor configuration, in JSON-LD */
+  string config = 2;
+  /* Processor arguments, in JSON-LD */
+  string arguments = 3;
+}
+
+message RunnerConfig {
+  /* The URI of the Runner. */
+  string uri = 1;
+  /* The runner configuration, in JSON-LD */
+  string config = 2;
+  repeated Processor arguments = 3;
+}
+
+message Message {
+  string uri = 1;
+
+  oneof content {
+    string data = 2;
+    int64 close = 3;
+  }
+}
+
+service Runner {
+  rpc init(Processor) returns (google.protobuf.Empty);
+  rpc start(stream Message) returns (stream Message);
+}
+
+message Request { string name = 1; }
+
+message Response { string message = 1; }
+
+message ChatMessage {
+  string user = 1;
+  string message = 2;
+}
+
+service MyService {
+  rpc SayHello(Request) returns (Response);
+  rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
+}
