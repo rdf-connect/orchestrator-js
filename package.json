@@ -7,9 +7,9 @@
     "build": "tspc && tsc-alias",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "test": "npm run build && vitest run --coverage --coverage.include lib --coverage.exclude lib/generated",
+    "test": "npm run build && vitest run",
     "prepare": "husky",
-    "build:proto": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=grpc-js,outputClientImpl=grpc-js --proto_path=./proto ./proto/*.proto"
+    "build:proto": "npx protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=grpc-js,outputClientImpl=grpc-js --proto_path=./proto ./proto/*.proto"
   },
   "husky": {
     "hooks": {
