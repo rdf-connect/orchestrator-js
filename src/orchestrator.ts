@@ -5,7 +5,7 @@ import path from 'path'
 import { Context, parse_processors } from '.'
 import { jsonld_to_quads } from './util'
 
-async function main() {
+export async function main() {
   const location = path.resolve(process.argv[2])
   console.log('Loading', location)
 
@@ -82,6 +82,3 @@ async function main() {
   }
 }
 
-if (require.main === module) {
-  main()
-}
