@@ -76,9 +76,7 @@ ex:a a sh:MyTargetClass;
     expect(document).toEqual({
       '@id': 'http://example.org/ns#a',
       '@type': 'http://www.w3.org/ns/shacl#MyTargetClass',
-      type: {
-        '@id': 'http://example.org/ns#SomeType',
-      },
+      type: 'http://example.org/ns#SomeType',
       config: [
         {
           '@id': {
@@ -128,9 +126,7 @@ _:b0 ex:b [ ex:b ex:c ].
     expect(document).toEqual({
       '@id': 'http://example.org/ns#a',
       '@type': 'http://www.w3.org/ns/shacl#MyTargetClass',
-      type: {
-        '@id': 'http://example.org/ns#SomeType',
-      },
+      type: 'http://example.org/ns#SomeType',
       config: [
         {
           '@id': {
@@ -162,7 +158,7 @@ _:b0 ex:b [ ex:b ex:c ].
       '@version': 1.1,
     }
     processor.addToContext(context)
-    const quads = await jsonld_to_quads(context, document)
+    const quads = await jsonld_to_quads(document, context)
     const quads_str = new Writer().quadsToString(quads)
     expect(quads_str).toEqual(
       `<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .
@@ -182,7 +178,7 @@ _:b4_b0 <http://example.org/ns#b> _:n3-30 .
     }
 
     processor.addToContext(context)
-    const quads = await jsonld_to_quads(context, document)
+    const quads = await jsonld_to_quads(document, context)
     const quads_str = new Writer().quadsToString(quads)
     expect(quads_str).toEqual(
       `<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .

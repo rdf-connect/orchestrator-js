@@ -2,15 +2,30 @@ import { JsonLdParser } from 'jsonld-streaming-parser'
 import { Context, Document } from '.'
 import { Quad } from '@rdfjs/types'
 
+export function jsonld_to_string(document: Document): string
+export function jsonld_to_string(document: Document, context: Context): string
+export function jsonld_to_string(document: Document, context?: Context): string
+export function jsonld_to_string(
+  document: Document,
+  context?: Context,
+): string {
+  if (context === undefined) {
+    context = <Context>(document['@context'] || {})
+    delete document['@context']
+  }
+
+  const json = `{"@context": ${JSON.stringify(context)},${JSON.stringify(
+    document,
+  ).slice(1)}`
+  return json
+}
+
 export async function jsonld_to_quads(document: Document): Promise<Quad[]>
 export async function jsonld_to_quads(
-  context: Context,
   document: Document,
+  context: Context,
 ): Promise<Quad[]>
-export async function jsonld_to_quads(
-  context: Context | Document,
-  document?: Document,
-) {
+export async function jsonld_to_quads(document: Document, context?: Context) {
   const quads: Quad[] = []
   const myParser = new JsonLdParser()
   const endPromise = new Promise((res, rej) => {
@@ -19,14 +34,7 @@ export async function jsonld_to_quads(
   })
 
   myParser.on('data', (quad) => quads.push(quad))
-  if (document) {
-    const json = `{"@context": ${JSON.stringify(context)},${JSON.stringify(
-      document,
-    ).slice(1)}`
-    myParser.write(json)
-  } else {
-    myParser.write(JSON.stringify(context))
-  }
+  myParser.write(jsonld_to_string(document, context))
 
   myParser.end()
   await endPromise

@@ -1,4 +1,3 @@
-
-import { main } from "../lib/orchestrator.js";
+import { main } from '../lib/orchestrator.js'
 
 main()

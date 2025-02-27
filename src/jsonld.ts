@@ -234,11 +234,11 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
       }
 
       if (property.datatype) {
-        // const items = values.map((v) => v.value)
-        const items =
-          property.datatype.value === 'http://www.w3.org/2001/XMLSchema#iri'
-            ? values.map((v) => ({ '@id': v.value }))
-            : values.map((v) => v.value)
+        const items = values.map((v) => v.value)
+        // const items =
+        //   property.datatype.value === 'http://www.w3.org/2001/XMLSchema#iri'
+        //     ? values.map((v) => ({ '@id': v.value }))
+        //     : values.map((v) => v.value)
         if (property.maxCount === undefined || property.maxCount > 1) {
           editing[property.name] = items
         } else {

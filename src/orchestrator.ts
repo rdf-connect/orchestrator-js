@@ -7,15 +7,16 @@ import { jsonld_to_quads } from './util'
 
 export async function main() {
   const location = path.resolve(process.argv[2])
+  const iri = 'file://' + location
   console.log('Loading', location)
 
   const file = await readFile(location, { encoding: 'utf8' })
-  const quads = new Parser({ baseIRI: location }).parse(file)
+  const quads = new Parser({ baseIRI: iri }).parse(file)
 
   // const discoveredShapes = extractShapes(quads)
   const discoveredShapes = parse_processors(quads)
   const pipeline = PipelineShape.execute({
-    id: new NamedNode(location),
+    id: new NamedNode(iri),
     quads,
   })
   console.log('Got pipeline')
@@ -81,4 +82,3 @@ export async function main() {
     }
   }
 }
-
