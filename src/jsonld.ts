@@ -258,9 +258,8 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
   }
 }
 
-export function parse_processors(quads: Quad[]): {
-  [id: string]: Definition
-} {
+export type Definitions = { [id: string]: Definition }
+export function parse_processors(quads: Quad[]): Definitions {
   const dtos = match(undefined, RDF.terms.type, SHACL.terms.NodeShape)
     .thenAll(subject)
     .thenSome(processorShape)
