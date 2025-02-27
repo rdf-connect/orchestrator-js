@@ -20,6 +20,7 @@ export async function startInstance(
   const port = getNextPort() + ''
   const [cmd, ...args] = parse(runner.command) as string[]
   args.push('0.0.0.0', port)
+  console.log('starting with ', [cmd, ...args])
   const child = spawn(cmd, args)
 
   child.stdout.on('data', (data) => {
@@ -85,7 +86,12 @@ export class Instance {
     ;(async () => {
       for await (const msg of stream) {
         this.cb(msg)
+        if (msg.data === undefined) {
+          break
+        }
       }
+      console.log('Closing server side')
+      stream.cancel()
     })()
 
     this.channels.push(

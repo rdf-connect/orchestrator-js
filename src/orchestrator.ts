@@ -1,7 +1,6 @@
 import { readFile } from 'fs/promises'
 import { NamedNode, Parser } from 'n3'
 import { Pipeline, PipelineShape, Processor, Runner } from './model'
-import path from 'path'
 import { Context, Definitions, parse_processors } from '.'
 import { jsonld_to_string } from './util'
 import { Quad } from '@rdfjs/types'
@@ -86,8 +85,7 @@ export class ProcessorInstance {
   }
 }
 
-export async function main() {
-  const location = path.resolve(process.argv[2])
+export async function start(location: string) {
   const iri = 'file://' + location
   console.log('Loading', location)
 
@@ -125,6 +123,7 @@ export async function main() {
 
   const instances: { [id: string]: Instance } = {}
   const cb = async (msg: Message) => {
+    console.log('Cb got message', msg)
     await Promise.all(Object.values(instances).map((inst) => inst.send(msg)))
   }
   await Promise.all(

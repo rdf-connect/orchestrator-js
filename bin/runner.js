@@ -1,3 +1,6 @@
-import { main } from '../lib/orchestrator.js'
+import { start } from '../lib/client.js'
 
-main()
+const host = process.argv[2]
+const port = process.argv[3]
+
+start(host, port)

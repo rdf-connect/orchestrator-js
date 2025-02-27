@@ -13,4 +13,9 @@ export default [
   {
     ignores: ['src/generated/', 'lib/', 'coverage/'],
   },
+  {
+    languageOptions: {
+      globals: {process: "readable"},
+    },
+  },
 ]

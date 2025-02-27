@@ -1,34 +1,50 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
-import { MyServiceServer, MyServiceService } from './generated/service'
-import { Request, Response } from './generated/service'
+import { Message, RunnerServer, RunnerService } from './generated/service'
+import { Empty } from './generated/google/protobuf/empty'
 
-const server: MyServiceServer = {
-  sayHello: (call, callback) => {
-    const request: Request = call.request
-    const response: Response = { message: `Hello, ${request.name}!` }
-    callback(null, response)
+const server: RunnerServer = {
+  init: (processor, callback) => {
+    console.log('Starting processor with ', processor)
+    callback(null, Empty)
   },
 
-  chatStream: async (call) => {
-    const writable = promisify(call.write.bind(call))
-    for await (const msg of call) {
-      console.log(`Received: ${msg.user}: ${msg.message}`)
-      await writable({ user: 'Server', message: `Echo: ${msg.message}` })
+  start: async (stream) => {
+    const writable = promisify(stream.write.bind(stream))
+    writable({ uri: '', data: 5 + '' })
+    for await (const chunk of stream) {
+      const msg: Message = chunk
+      console.log('Got message', msg)
+      if (msg.data) {
+        const int = parseInt(msg.data)
+        if (int !== 0) {
+          await writable({ uri: '', data: int - 1 + '' })
+        } else {
+          await writable({ uri: '', close: 1 })
+          break
+        }
+      } else {
+        stream.end()
+        break
+      }
     }
-    call.end()
+
     console.log('Closed')
+    grpcServer.tryShutdown((e) => console.error('shutdown', e))
+    // process.exit(0)
   },
 }
 
 const grpcServer = new grpc.Server()
-grpcServer.addService(MyServiceService, server)
+grpcServer.addService(RunnerService, server)
 
-grpcServer.bindAsync(
-  '0.0.0.0:50051',
-  grpc.ServerCredentials.createInsecure(),
-  () => {
-    console.log('Server running on port 50051')
-    grpcServer.start()
-  },
-)
+export function start(host: string, port: string) {
+  grpcServer.bindAsync(
+    host + ':' + port,
+    grpc.ServerCredentials.createInsecure(),
+    () => {
+      console.log('Server running on port ' + port)
+      grpcServer.start()
+    },
+  )
+}

@@ -35,16 +35,3 @@ service Runner {
   rpc start(stream Message) returns (stream Message);
 }
 
-message Request { string name = 1; }
-
-message Response { string message = 1; }
-
-message ChatMessage {
-  string user = 1;
-  string message = 2;
-}
-
-service MyService {
-  rpc SayHello(Request) returns (Response);
-  rpc ChatStream(stream ChatMessage) returns (stream ChatMessage);
-}
