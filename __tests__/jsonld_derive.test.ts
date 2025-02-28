@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Quad } from '@rdfjs/types'
-import { Context, parse_processors } from '../lib/index'
+import { Document, parse_processors } from '../lib/index'
 import { jsonld_to_quads } from '../lib/util'
 import { NamedNode, Parser, Writer } from 'n3'
 
@@ -16,178 +16,247 @@ describe('Extract processor correctly', () => {
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix ex: <http://example.org/ns#>.
 
-ex:MyShape a sh:NodeShape;
-  sh:targetClass sh:MyTargetClass;
+[] a sh:NodeShape;
+  sh:targetClass ex:InvalidProperty;
   sh:property [
-    sh:name "type";
-    sh:path ex:type;
-    sh:datatype xsd:iri;
-    sh:maxCount 1;
-    sh:minCount 1;
-  ], [
-    sh:name "config";
-    sh:path ( );
-    sh:class rdfl:CBD;
+    sh:name "cbd";
+    sh:path ex:nested;
     sh:maxCount 1;
     sh:minCount 1;
   ].
+
+[] a sh:NodeShape;
+  sh:targetClass ex:Invalid;
+  sh:property [
+    sh:name "cbd";
+    sh:path ex:nested;
+    sh:class ex:NonExistend;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+[] a sh:NodeShape;
+  sh:targetClass ex:CBD;
+  sh:property [
+    sh:name "cbd";
+    sh:path ex:nested;
+    sh:class rdfl:Path;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+[] a sh:NodeShape;
+  sh:targetClass ex:Nested;
+  sh:property [
+    sh:name "foobar";
+    sh:path ex:number;
+    sh:datatype xsd:integer;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ],[
+    sh:name "inner";
+    sh:path ( );
+    sh:class ex:SimpleShape;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+[] a sh:NodeShape;
+  sh:targetClass ex:SimpleShape;
+  sh:property [
+    sh:name "number";
+    sh:path ex:number;
+    sh:datatype xsd:integer;
+  ],[
+    sh:name "string";
+    sh:path ex:string;
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ],[
+    sh:name "iri";
+    sh:path ex:iri;
+    sh:datatype xsd:iri;
+    sh:maxCount 1;
+  ], [
+    sh:name "nested";
+    sh:path ex:nested;
+    sh:class ex:SimpleShape;
+    sh:maxCount 1;
+  ].
 `
-  const config_quads = parse_quads(config)
-  const processors = parse_processors(config_quads)
-  const processor = processors['http://www.w3.org/ns/shacl#MyTargetClass']
 
-  test('can build context', () => {
-    const context: Context = {
-      '@version': 1.1,
-    }
-    processor.addToContext(context)
-    expect(context).toEqual({
-      '@version': 1.1,
-      'http://www.w3.org/ns/shacl#MyTargetClass': {
-        '@id': 'http://www.w3.org/ns/shacl#MyTargetClass',
-        '@context': {
-          '@version': 1.1,
-          config: '@nest',
-          type: { '@id': 'http://example.org/ns#type', '@type': '@id' },
-        },
-      },
-    })
-  })
-
+  const EX = 'http://example.org/ns#'
   const data = `
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 @prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix ex: <http://example.org/ns#>.
-ex:a a sh:MyTargetClass;
-  ex:type ex:SomeType;
-  ex:b [ ex:c ex:d ].
+ex:simple a ex:SimpleShape;
+  ex:number 42;
+  ex:string "42";
+  ex:iri ex:fourtyTwo;
+  ex:nested [
+    ex:number 43;
+    ex:string "43";
+    ex:iri ex:fourtyThree;
+  ].
 `
 
+  const config_quads = parse_quads(config)
+  const processors = parse_processors(config_quads)
   const data_quads = parse_quads(data)
-  const document = processor.addToDocument(
-    new NamedNode('http://example.org/ns#a'),
-    data_quads,
-    processors,
-    {},
-  )
-  test('can transform data', () => {
-    expect(document).toEqual({
-      '@id': 'http://example.org/ns#a',
-      '@type': 'http://www.w3.org/ns/shacl#MyTargetClass',
-      type: 'http://example.org/ns#SomeType',
-      config: [
-        {
-          '@id': {
-            '@value': 'http://example.org/ns#a',
-            '@type': 'http://www.w3.org/2001/XMLSchema#iri',
-          },
-        },
-      ],
-      'http://example.org/ns#type': [
-        { '@id': 'http://example.org/ns#SomeType' },
-      ],
-      'http://www.w3.org/1999/02/22-rdf-syntax-ns#type': [
-        { '@id': 'http://www.w3.org/ns/shacl#MyTargetClass' },
-      ],
-      'http://example.org/ns#b': [
-        {
-          '@id': '_:n3-29',
-          'http://example.org/ns#c': [{ '@id': 'http://example.org/ns#d' }],
-        },
-      ],
-    })
-  })
 
-  test('Handles blanknodes correctly', async () => {
-    const data = `
-@prefix sh: <http://www.w3.org/ns/shacl#>.
-@prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
-@prefix ex: <http://example.org/ns#>.
-ex:a a sh:MyTargetClass;
-  ex:type ex:SomeType;
-  ex:b _:b0;
-  ex:x _:b0.
-
-_:b0 ex:b [ ex:b ex:c ].
-`
-
-    const data_quads = parse_quads(data)
-    const document = processor.addToDocument(
-      new NamedNode('http://example.org/ns#a'),
+  function getDocument(iri: string, shape: string): Document {
+    return processors[shape].addToDocument(
+      new NamedNode(iri),
       data_quads,
       processors,
-      {},
     )
+  }
 
-    expect(document).toEqual({
-      '@id': 'http://example.org/ns#a',
-      '@type': 'http://www.w3.org/ns/shacl#MyTargetClass',
-      type: 'http://example.org/ns#SomeType',
-      config: [
-        {
-          '@id': {
-            '@value': 'http://example.org/ns#a',
-            '@type': 'http://www.w3.org/2001/XMLSchema#iri',
-          },
-        },
-      ],
-      'http://example.org/ns#type': [
-        { '@id': 'http://example.org/ns#SomeType' },
-      ],
-      'http://www.w3.org/1999/02/22-rdf-syntax-ns#type': [
-        { '@id': 'http://www.w3.org/ns/shacl#MyTargetClass' },
-      ],
-      'http://example.org/ns#b': [
-        {
-          '@id': '_:b4_b0',
-          'http://example.org/ns#b': [
-            {
-              '@id': '_:n3-30',
-            },
-          ],
-        },
-      ],
-      'http://example.org/ns#x': [{ '@id': '_:b4_b0' }],
-    })
+  async function getTurtle(doc: Document) {
+    const quads = await jsonld_to_quads(doc)
+    return new Writer().quadsToString(quads)
+  }
 
-    const context: Context = {
-      '@version': 1.1,
-    }
-    processor.addToContext(context)
-    const quads = await jsonld_to_quads(document, context)
-    const quads_str = new Writer().quadsToString(quads)
+  const simpleShapeContext = {
+    number: {
+      '@id': 'http://example.org/ns#number',
+      '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+    },
+    string: {
+      '@id': 'http://example.org/ns#string',
+      '@type': 'http://www.w3.org/2001/XMLSchema#string',
+    },
+    iri: {
+      '@id': 'http://example.org/ns#iri',
+      '@type': '@id',
+    },
+    nested: {
+      '@id': 'http://example.org/ns#nested',
+    },
+  }
+
+  const simpleShape = {
+    '@type': 'http://example.org/ns#SimpleShape',
+    '@context': simpleShapeContext,
+    number: [42],
+    string: '42',
+    iri: 'http://example.org/ns#fourtyTwo',
+    nested: {
+      '@id': '_:n3-41',
+      '@type': 'http://example.org/ns#SimpleShape',
+      '@context': simpleShapeContext,
+      string: '43',
+      number: [43],
+      nested: undefined,
+      iri: 'http://example.org/ns#fourtyThree',
+    },
+  }
+
+  test('can parse simple shapes', async () => {
+    const document = getDocument(EX + 'simple', EX + 'SimpleShape')
+    expect(document).toEqual(
+      Object.assign({ '@id': 'http://example.org/ns#simple' }, simpleShape),
+    )
+    const quads_str = await getTurtle(document)
     expect(quads_str).toEqual(
-      `<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .
-<http://example.org/ns#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#MyTargetClass> .
-<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .
-_:b4_b0 <http://example.org/ns#b> _:n3-30 .
-<http://example.org/ns#a> <http://example.org/ns#b> _:b4_b0 .
-<http://example.org/ns#a> <http://example.org/ns#x> _:b4_b0 .
-<http://example.org/ns#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#MyTargetClass> .
+      `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-41 <http://example.org/ns#number> 43 .
+_:n3-41 <http://example.org/ns#string> "43" .
+_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
 `,
     )
   })
 
-  test('JSON-LD contains correct triples', async () => {
-    const context: Context = {
-      '@version': 1.1,
-    }
-
-    processor.addToContext(context)
-    const quads = await jsonld_to_quads(document, context)
-    const quads_str = new Writer().quadsToString(quads)
+  test('can parse nested shapes', async () => {
+    const document = getDocument(EX + 'simple', EX + 'Nested')
+    expect(document).toEqual({
+      '@id': 'http://example.org/ns#simple',
+      '@type': 'http://example.org/ns#Nested',
+      '@context': {
+        foobar: {
+          '@id': 'http://example.org/ns#number',
+          '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+        },
+        inner: '@nest',
+        '@version': 1.1,
+      },
+      foobar: 42,
+      inner: simpleShape,
+    })
+    const quads_str = await getTurtle(document)
     expect(quads_str).toEqual(
-      `<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .
-<http://example.org/ns#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#MyTargetClass> .
-<http://example.org/ns#a> <http://example.org/ns#type> <http://example.org/ns#SomeType> .
-_:n3-29 <http://example.org/ns#c> <http://example.org/ns#d> .
-<http://example.org/ns#a> <http://example.org/ns#b> _:n3-29 .
-<http://example.org/ns#a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#MyTargetClass> .
+      `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-41 <http://example.org/ns#number> 43 .
+_:n3-41 <http://example.org/ns#string> "43" .
+_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#Nested> .
 `,
     )
+  })
+
+  test('can parse cbd shapes', async () => {
+    const document = getDocument(EX + 'simple', EX + 'CBD')
+    console.log(JSON.stringify(document, undefined, 2))
+    expect(document).toEqual({
+      '@id': 'http://example.org/ns#simple',
+      '@type': 'http://example.org/ns#CBD',
+      '@context': {
+        cbd: {
+          '@id': 'http://example.org/ns#nested',
+        },
+      },
+      cbd: {
+        '@id': '_:n3-41',
+        'http://example.org/ns#number': [
+          {
+            '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+            '@value': '43',
+          },
+        ],
+        'http://example.org/ns#string': [
+          {
+            '@type': 'http://www.w3.org/2001/XMLSchema#string',
+            '@value': '43',
+          },
+        ],
+        'http://example.org/ns#iri': [
+          {
+            '@id': 'http://example.org/ns#fourtyThree',
+          },
+        ],
+      },
+    })
+    const quads_str = await getTurtle(document)
+    console.log(quads_str)
+    expect(quads_str).toEqual(
+      `_:n3-41 <http://example.org/ns#number> 43 .
+_:n3-41 <http://example.org/ns#string> "43" .
+_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
+`,
+    )
+  })
+
+  test('cannot parse invalid shape', async () => {
+    expect(() => getDocument(EX + 'simple', EX + 'Invalid')).toThrow()
+  })
+
+  test('cannot parse invalid property', async () => {
+    expect(() => getDocument(EX + 'simple', EX + 'InvalidProperty')).toThrow()
   })
 })

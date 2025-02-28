@@ -15,7 +15,7 @@ export default [
   },
   {
     languageOptions: {
-      globals: {process: "readable"},
+      globals: { process: 'readable' },
     },
   },
 ]

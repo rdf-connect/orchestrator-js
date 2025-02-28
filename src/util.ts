@@ -9,6 +9,7 @@ export function jsonld_to_string(
   document: Document,
   context?: Context,
 ): string {
+  document = JSON.parse(JSON.stringify(document))
   if (context === undefined) {
     context = <Context>(document['@context'] || {})
     delete document['@context']

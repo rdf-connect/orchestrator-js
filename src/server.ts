@@ -1,47 +1,101 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
-import { MyServiceClient, Request, Response } from './generated/service'
+import {
+  Close,
+  Message,
+  OrchestratorMessage,
+  Processor,
+  ProcessorInit,
+  RunnerMessage,
+  RunnerServer,
+} from './generated/service'
+import { Empty } from './generated/google/protobuf/empty'
 
-const client = new MyServiceClient(
-  'localhost:50051',
-  grpc.credentials.createInsecure(),
-)
+export interface ToRunner {
+  processor(proc: Processor): Promise<unknown>
+  start(): Promise<unknown>
+  message(msg: Message): Promise<unknown>
+  close(msg: Close): Promise<unknown>
+}
 
-const sayHelloAsync = promisify<Request, Response>(client.sayHello.bind(client))
-
-async function startChat() {
-  const chatStream = client.chatStream()
-
-  const sendPromise = promisify(chatStream.write.bind(chatStream)) // Send messages
-  ;(async function () {
-    for (const msg of ['Hello', 'How are you?', 'Goodbye']) {
-      console.log('Sending:', msg)
-      await sendPromise({ user: 'Client', message: msg })
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulate delay
-    }
-    console.log('Ended')
-  })()
-
-  // Receive messages
-  for await (const response of chatStream) {
-    console.log('Received:', response.user, response.message)
-    console.log(typeof response.message)
-    if (response.message.includes('Goodbye')) {
-      chatStream.cancel()
-      return
-    }
+export function stubToRunner(): ToRunner {
+  return {
+    processor: async () => {},
+    start: async () => {},
+    message: async () => {},
+    close: async () => {},
   }
 }
 
-// Using async/await
-export async function callSayHello() {
-  try {
-    const request: Request = { name: 'Alice' }
-    const response = await sayHelloAsync(request)
-    console.log(response.message)
-  } catch (err) {
-    console.error('Error:', err)
-  }
+export interface FromRunner {
+  setWriter(orchestrator: ToRunner): Promise<void>
+  init(msg: ProcessorInit): Promise<void>
+  msg(msg: Message): Promise<void>
+  close(msg: Close): Promise<void>
 }
 
-startChat()
+export class Server {
+  server: RunnerServer
+  readonly runners: {
+    [label: string]: { part: FromRunner; promise: () => void }
+  } = {}
+
+  constructor() {
+    this.server = {
+      connect: async (
+        stream: grpc.ServerDuplexStream<OrchestratorMessage, RunnerMessage>,
+      ) => {
+        const msg = <OrchestratorMessage>(
+          await new Promise((res) => stream.once('data', res))
+        )
+        if (!msg.identify) {
+          throw 'Expected the first msg to be an identify message'
+        } else {
+          console.log('Got identify message')
+        }
+
+        const write = promisify(stream.write.bind(stream))
+        const orchestrator_part: ToRunner = {
+          processor: (proc: Processor) => write({ proc }),
+          start: () => write({ start: Empty }),
+          message: (msg: Message) => write({ msg }),
+          close: (close: Close) => write({ close }),
+        }
+
+        const runner = this.runners[msg.identify.uri]
+
+        ;(async () => {
+          for await (const chunk of stream) {
+            const msg: OrchestratorMessage = chunk
+            if (msg.msg) {
+              console.log('Data message', msg.msg)
+              runner.part.msg(msg.msg)
+            }
+            if (msg.init) {
+              console.log('Init message', msg.init)
+              runner.part.init(msg.init)
+            }
+            if (msg.close) {
+              console.log('Close message', msg.close)
+              runner.part.close(msg.close)
+            }
+            if (msg.identify) {
+              console.error("Didn't expect identify message")
+            }
+          }
+        })()
+        runner.part.setWriter(orchestrator_part)
+        runner.promise()
+      },
+    }
+  }
+
+  addRunner(uri: string, part: FromRunner): Promise<void> {
+    return new Promise((res) => {
+      this.runners[uri] = {
+        part,
+        promise: () => res(),
+      }
+    })
+  }
+}

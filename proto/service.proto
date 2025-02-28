@@ -4,6 +4,12 @@ package mypackage;
 
 import "google/protobuf/empty.proto";
 
+message Error { string cause = 1; }
+
+message Identify {
+  string uri = 1;
+}
+
 message Processor {
   /* The URI of the Processor. */
   string uri = 1;
@@ -13,25 +19,39 @@ message Processor {
   string arguments = 3;
 }
 
-message RunnerConfig {
-  /* The URI of the Runner. */
+// Tells the orchestrator that the processor is initialized
+message ProcessorInit {
+  /* The URI of the Processor. */
   string uri = 1;
-  /* The runner configuration, in JSON-LD */
-  string config = 2;
-  repeated Processor arguments = 3;
+  optional Error error = 2;
 }
 
-message Message {
-  string uri = 1;
+message Close { string channel = 1; }
 
-  oneof content {
-    string data = 2;
-    int64 close = 3;
+message Message {
+  string channel = 1;
+  string data = 2;
+}
+
+// All possible messages that runners handle
+message RunnerMessage {
+  oneof inner {
+    Processor proc = 1;
+    google.protobuf.Empty start = 2;
+    Message msg = 3;
+    Close close = 4;
+  }
+}
+
+message OrchestratorMessage {
+  oneof inner {
+    ProcessorInit init = 1;
+    Message msg = 2;
+    Close close = 3;
+    Identify identify = 4;
   }
 }
 
 service Runner {
-  rpc init(Processor) returns (google.protobuf.Empty);
-  rpc start(stream Message) returns (stream Message);
+  rpc connect(stream OrchestratorMessage) returns (stream RunnerMessage);
 }
-

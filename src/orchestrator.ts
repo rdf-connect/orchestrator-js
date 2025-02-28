@@ -1,15 +1,70 @@
+import * as grpc from '@grpc/grpc-js'
 import { readFile } from 'fs/promises'
 import { NamedNode, Parser } from 'n3'
 import { Pipeline, PipelineShape, Processor, Runner } from './model'
-import { Context, Definitions, parse_processors } from '.'
+import { Definitions, Document, parse_processors } from '.'
 import { jsonld_to_string } from './util'
 import { Quad } from '@rdfjs/types'
-import { Instance, startInstance } from './grpc'
-import { Message } from './generated/service'
+import {
+  Close,
+  Message,
+  ProcessorInit,
+  RunnerService,
+} from './generated/service'
+import { FromRunner, Server, stubToRunner, ToRunner } from './server'
+import { CommandRunner, RunnerTrait } from './grpc'
+
+export type Callbacks = {
+  msg: (msg: Message) => Promise<void>
+  close: (close: Close) => Promise<void>
+}
+
+export class RunnerInstance implements FromRunner {
+  processorsPromises: { [id: string]: () => void } = {}
+  toRunner: ToRunner = stubToRunner()
+
+  runner: Runner
+  cbs: Callbacks
+  runnerCmd: RunnerTrait
+
+  constructor(runner: Runner, cbs: Callbacks) {
+    this.runner = runner
+    this.cbs = cbs
+    this.runnerCmd = new CommandRunner(runner.command)
+  }
+
+  async start(addr: string) {
+    await this.runnerCmd.start(addr, this.runner.id.value)
+  }
+  async setWriter(orchestrator: ToRunner): Promise<void> {
+    console.log('Writer set')
+    this.toRunner = orchestrator
+  }
+  async init(msg: ProcessorInit): Promise<void> {
+    this.processorsPromises[msg.uri]()
+  }
+  msg(msg: Message): Promise<void> {
+    return this.cbs.msg(msg)
+  }
+  close(close: Close): Promise<void> {
+    return this.cbs.close(close)
+  }
+  addProcessor(processor: ProcessorInstance): Promise<void> {
+    this.toRunner.processor({
+      uri: processor.proc.id.value,
+      config: '{}',
+      arguments: processor.arguments,
+    })
+    return new Promise((res) => {
+      this.processorsPromises[processor.proc.id.value] = res
+    })
+  }
+}
 
 export class ProcessorInstance {
   proc: Processor
   runner: Runner
+  document: Document
   arguments: string
   constructor(
     proc: Processor,
@@ -28,20 +83,21 @@ export class ProcessorInstance {
       throw 'No shape definition found'
     }
 
-    const context: Context = {
-      '@version': 1.1,
-    }
-    shape.addToContext(context)
     const jsonld_document = shape.addToDocument(
       proc.id,
       quads,
       discoveredShapes,
-      {},
     )
-    jsonld_document['@context'] = context
 
     this.arguments = jsonld_to_string(jsonld_document)
-    this.runner = this.findRunner(proc, pipeline, quads, discoveredShapes)
+    const { runner, document } = this.findRunner(
+      proc,
+      pipeline,
+      quads,
+      discoveredShapes,
+    )
+    this.runner = runner
+    this.document = document
   }
 
   private findRunner(
@@ -49,7 +105,7 @@ export class ProcessorInstance {
     pipeline: Pipeline,
     quads: Quad[],
     discoveredShapes: Definitions,
-  ): Runner {
+  ): { runner: Runner; document: Document } {
     const runners = pipeline.runners.filter((x) =>
       x.handles.some((handle) => handle === proc.type.runner_type),
     )
@@ -70,22 +126,32 @@ export class ProcessorInstance {
 
     const runner = runners[0]
     const processorShape = discoveredShapes[runner.processor_definition]
-    const context: Context = {
-      '@version': 1.1,
-    }
-    processorShape.addToContext(context)
-    const jsonld_document = processorShape.addToDocument(
+
+    const document = processorShape.addToDocument(
       proc.type.id,
       quads,
       discoveredShapes,
-      {},
     )
-    jsonld_document['@context'] = context
-    return runner
+    return { runner, document }
   }
 }
 
 export async function start(location: string) {
+  const orchestrator = new Server()
+
+  const port = 50051
+  const grpcServer = new grpc.Server()
+  grpcServer.addService(RunnerService, orchestrator.server)
+  await new Promise((res) =>
+    grpcServer.bindAsync(
+      '0.0.0.0:' + port,
+      grpc.ServerCredentials.createInsecure(),
+      res,
+    ),
+  )
+  const addr = 'localhost:' + port
+  console.log('Grpc server is bound!', addr)
+
   const iri = 'file://' + location
   console.log('Loading', location)
 
@@ -121,28 +187,41 @@ export async function start(location: string) {
     }
   }
 
-  const instances: { [id: string]: Instance } = {}
-  const cb = async (msg: Message) => {
-    console.log('Cb got message', msg)
-    await Promise.all(Object.values(instances).map((inst) => inst.send(msg)))
+  const instances: { [id: string]: RunnerInstance } = {}
+  const callbacks: Callbacks = {
+    msg: async (msg: Message) => {
+      console.log('Cb got message', msg)
+      await Promise.all(
+        Object.values(instances).map((inst) => inst.toRunner.message(msg)),
+      )
+    },
+    close: async (close: Close) => {
+      await Promise.all(
+        Object.values(instances).map((inst) => inst.toRunner.close(close)),
+      )
+    },
   }
+
   await Promise.all(
-    Object.values(runners).map(async (runner) => {
-      instances[runner.id.value] = await startInstance(runner, cb)
+    Object.values(runners).map(async (r) => {
+      const runner = new RunnerInstance(r, callbacks)
+      instances[r.id.value] = runner
+      await runner.start(addr)
+      console.log('Runner started', r.id.value)
+      await orchestrator.addRunner(r.id.value, runner)
+      console.log('Runner registered', r.id.value)
     }),
   )
 
   console.log('All runners are instanciated')
 
   await Promise.all(
-    processors.map((processor) =>
-      instances[processor.runner.id.value].init(processor),
-    ),
+    processors.map(async (processor) => {
+      console.log('Starting proc', processor)
+      await instances[processor.runner.id.value].addProcessor(processor)
+    }),
   )
+
   console.log('All processors are instanciated')
-
-  //  We found the runners, lets start them
-
-  await Promise.all(Object.values(instances).map((x) => x.start()))
-  console.log('All processors are started')
+  await Promise.all(Object.values(instances).map((x) => x.toRunner.start()))
 }

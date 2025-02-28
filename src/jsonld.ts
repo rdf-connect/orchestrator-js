@@ -13,6 +13,7 @@ import {
 export const RDFL = createUriAndTermNamespace(
   'https://w3id.org/rdf-lens/ontology#',
   'CBD',
+  'Path',
   'PathLens',
   'Context',
   'TypedExtract',
@@ -60,10 +61,9 @@ export type Context = {
 } & ContextHeader
 
 export type Document = {
-  [key: string]: Document | string | string[] | number | Document[]
+  [key: string]: DocumentValue | DocumentValue[]
 }
-
-type Cache = { [id: string]: Document }
+export type DocumentValue = Document | string | number
 
 export abstract class Definition {
   abstract addToContext(context: Context): void
@@ -71,46 +71,26 @@ export abstract class Definition {
     id: Term,
     quads: Quad[],
     others: { [id: string]: Definition },
-    cache: Cache,
+    isNest?: boolean,
   ): Document
 
   // Gets the already started document for an identifier if it already exists
   // In JSON-LD, identifiers are not allowed to be repeated with content
   // If no document exists, it is created and inserted into  the cache
-  protected getFromCache(
-    id: Term,
-    cache: Cache,
-  ): { out: Document; editing: Document } {
+  protected getFromCache(id: Term, isNest = false): Document {
     const actualId = id.termType == 'BlankNode' ? '_:' + id.value : id.value
-    if (cache[actualId] !== undefined) {
-      if (id.termType == 'NamedNode') {
-        return {
-          out: {
-            '@id': {
-              '@value': id.value,
-              '@type': XSD.custom('iri'),
-            },
-          },
-          editing: cache[actualId],
-        }
-      } else {
-        return {
-          out: {
-            '@id': actualId,
-          },
-          editing: cache[actualId],
-        }
-      }
-    } else {
-      const out = {
-        '@id': actualId,
-      }
-      cache[actualId] = out
+    if (id.termType === 'Literal') {
       return {
-        editing: out,
-        out,
+        '@value': id.value,
+        '@type': id.datatype.value,
       }
     }
+    const out: Document = isNest
+      ? {}
+      : {
+          '@id': actualId,
+        }
+    return out // }
   }
 }
 
@@ -120,22 +100,26 @@ export class CBDDefinition extends Definition {
     id: Term,
     quads: Quad[],
     others: { [id: string]: Definition },
-    cache: { [id: string]: Document },
+    isNest = false,
   ): Document {
-    const { out, editing } = this.getFromCache(id, cache)
+    const out = this.getFromCache(id, isNest)
 
     for (const t of quads.filter((x) => x.subject.equals(id))) {
       if (!out[t.predicate.value]) {
-        editing[t.predicate.value] = []
+        out[t.predicate.value] = []
       }
 
-      ;(<Document[]>editing[t.predicate.value]).push(
-        this.addToDocument(t.object, quads, others, cache),
+      ;(<Document[]>out[t.predicate.value]).push(
+        this.addToDocument(t.object, quads, others),
       )
     }
 
     return out
   }
+}
+
+function isNestedProperty(property: PropertyDTO): boolean {
+  return property.path.id.equals(RDF.terms.nil)
 }
 
 export class PlainDefinition extends Definition implements ProcessorDTO {
@@ -147,14 +131,15 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
     Object.assign(this, dto)
   }
 
-  addToContext(context: Context) {
+  addToContext(context: Document) {
     const innerCtx: {
       [id: string]: string | number | { '@id': string; '@type'?: string }
-    } = {
-      '@version': 1.1,
-    }
+    } = {}
+    let needs11 = false
+
     for (const property of this.properties) {
-      if (property.path.id.equals(RDF.terms.nil)) {
+      if (isNestedProperty(property)) {
+        needs11 = true
         innerCtx[property.name] = '@nest'
       } else {
         const obj: { '@id': string; '@type'?: string } = {
@@ -170,16 +155,20 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
       }
     }
 
-    context[this.target.value] = {
-      '@id': this.target.value,
-      '@context': innerCtx,
+    if (needs11) {
+      innerCtx['@version'] = 1.1
     }
+
+    context['@context'] = innerCtx
+    // context[this.target.value] = {
+    //   '@id': this.target.value,
+    //   '@context': innerCtx,
+    // }
   }
 
   private handleClazzProperty(
     quads: Quad[],
     others: { [id: string]: Definition },
-    cache: { [id: string]: Document },
     values: Term[],
     property: PropertyDTO,
     editing: Document,
@@ -189,7 +178,12 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
     for (const v of values) {
       try {
         vs.push(
-          others[property.clazz!.value].addToDocument(v, quads, others, cache),
+          others[property.clazz!.value].addToDocument(
+            v,
+            quads,
+            others,
+            isNestedProperty(property),
+          ),
         )
       } catch (ex) {
         console.error('Failed at property', {
@@ -199,20 +193,21 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
       }
     }
 
-    editing[property.name] = vs
+    editing[property.name] = handleAccordingToProperty(vs, property)
   }
 
   addToDocument(
     id: Term,
     quads: Quad[],
     others: { [id: string]: Definition },
-    cache: { [id: string]: Document },
+    isNest: boolean = false,
   ): Document {
-    const { out, editing } = this.getFromCache(id, cache)
-    editing['@type'] = this.target.value
+    const out = this.getFromCache(id, isNest)
+    out['@type'] = this.target.value
+    this.addToContext(out)
 
     for (const property of this.properties) {
-      const values = property.path.id.equals(RDF.terms.nil)
+      const values = isNestedProperty(property)
         ? [id]
         : quads
             .filter(
@@ -222,32 +217,16 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
             .map((x) => x.object)
 
       if (property.clazz) {
-        this.handleClazzProperty(
-          quads,
-          others,
-          cache,
-          values,
-          property,
-          editing,
-        )
+        this.handleClazzProperty(quads, others, values, property, out)
         continue
       }
 
       if (property.datatype) {
-        const items = values.map((v) => v.value)
-        // const items =
-        //   property.datatype.value === 'http://www.w3.org/2001/XMLSchema#iri'
-        //     ? values.map((v) => ({ '@id': v.value }))
-        //     : values.map((v) => v.value)
-        if (property.maxCount === undefined || property.maxCount > 1) {
-          editing[property.name] = items
-        } else {
-          if (items.length > 1) {
-            console.error('Expected at most one item')
-          }
+        const items = values.map((v) =>
+          handleAccordingToDatatype(v.value, property.datatype!),
+        )
 
-          editing[property.name] = items[0]
-        }
+        out[property.name] = handleAccordingToProperty(items, property)
         continue
       }
 
@@ -255,6 +234,22 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
     }
 
     return out
+  }
+}
+
+function handleAccordingToDatatype(inp: string, datatype: Term) {
+  if (datatype.equals(XSD.terms.integer)) return parseInt(inp)
+  return inp
+}
+function handleAccordingToProperty<T>(ts: T[], property: PropertyDTO): T | T[] {
+  if (property.maxCount === undefined || property.maxCount > 1) {
+    return ts
+  } else {
+    if (ts.length > 1) {
+      console.error('Expected at most one item')
+    }
+
+    return ts[0]
   }
 }
 
@@ -273,6 +268,7 @@ export function parse_processors(quads: Quad[]): Definitions {
     .execute(quads)
 
   dtos[RDFL.CBD] = new CBDDefinition()
+  dtos[RDFL.Path] = new CBDDefinition()
 
   return dtos
 }
