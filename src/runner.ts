@@ -5,11 +5,11 @@ import {
   OrchestratorMessage,
   RunnerMessage,
 } from './generated/service'
-import { ProcessorInstance } from './orchestrator'
+import { orchestrator, ProcessorInstance } from './orchestrator'
 import { spawn } from 'child_process'
 import { Empty } from './generated/google/protobuf/empty'
 import { Term } from '@rdfjs/types'
-import { cbs, URI } from './model'
+import { URI } from './model'
 import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
 
 export type Channels = {
@@ -63,10 +63,10 @@ export abstract class Runner {
 
   async handleMessage(msg: OrchestratorMessage): Promise<void> {
     if (msg.msg) {
-      await cbs.msg(msg.msg)
+      await orchestrator.msg(msg.msg)
     }
     if (msg.close) {
-      await cbs.close(msg.close)
+      await orchestrator.close(msg.close)
     }
     if (msg.init) {
       this.processors[msg.init.uri]()

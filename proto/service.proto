@@ -54,4 +54,10 @@ message OrchestratorMessage {
 
 service Runner {
   rpc connect(stream OrchestratorMessage) returns (stream RunnerMessage);
+  // rpc sendMessage(stream DataChunk) returns (google.protobuf.Empty)
+  // rpc receiveMessage(google.protobuf.Empty) returns (stream DataChunk)
 }
+
+
+
+

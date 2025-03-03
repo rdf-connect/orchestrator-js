@@ -6,6 +6,7 @@
 @prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
 
 <MyChannel> a rdfc:Channel.
+
 <> a rdfc:Pipeline;
   rdfc:dependency <>;
   rdfc:processor <MyEpicProcessor>;

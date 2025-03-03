@@ -1,15 +1,21 @@
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { Term } from '@rdfjs/types'
-import { Parser } from 'n3'
+import { NamedNode, Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
 import { CommandRunner, Runner, RunnerConfig } from './runner'
-import { Callbacks } from './orchestrator'
 
 export type Pipeline = {
   id: Term
   dependency: string[]
   processors: Processor[]
   runners: Runner[]
+}
+
+export const emptyPipeline: Pipeline = {
+  id: new NamedNode(''),
+  dependency: [],
+  processors: [],
+  runners: [],
 }
 
 export type URI = string
@@ -22,11 +28,6 @@ export type Processor = {
 export type ProcessorType = {
   id: Term
   runner_type: URI
-}
-
-export const cbs: Callbacks = {
-  msg: async () => {},
-  close: async () => {},
 }
 
 const processor = $INLINE_FILE('./model.ttl')
