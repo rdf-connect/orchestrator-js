@@ -160,10 +160,6 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
     }
 
     context['@context'] = innerCtx
-    // context[this.target.value] = {
-    //   '@id': this.target.value,
-    //   '@context': innerCtx,
-    // }
   }
 
   private handleClazzProperty(

@@ -1,3 +1,4 @@
+@prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix sh: <http://www.w3.org/ns/shacl#>.
@@ -22,31 +23,31 @@ _:id sh:path ( );
   ], [
     sh:path rdfc:runner;
     sh:name "runners";
-    sh:class <Runner>;
+    sh:class rdfl:TypedExtract;
   ].
 
-# [ ] a sh:NodeShape;
-#   sh:targetClass <Runner>;
-#   sh:property _:id, [
-#     sh:path rdf:type;
-#     sh:name "type";
-#     sh:minCount 1;
-#     sh:maxCount 1;
-#     sh:class <RunnerType>;
-#   ].
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:CommandRunner;
+  sh:property [
+    sh:path ( );
+    sh:name "config";
+    sh:class <RunnerConfig>;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:command;
+    sh:name "command";
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass <Runner>;
+  sh:targetClass <RunnerConfig>;
   sh:property _:id, [
     sh:path rdfc:handles;
     sh:name "handles";
     sh:minCount 1;
-    sh:datatype xsd:string;
-  ], [
-    sh:path rdfc:command;
-    sh:name "command";
-    sh:minCount 1;
-    sh:maxCount 1;
     sh:datatype xsd:string;
   ], [
     sh:path rdfc:processor_definition;

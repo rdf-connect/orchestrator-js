@@ -44,6 +44,7 @@ sequenceDiagram
         end
     end
 ```
+
 </details>
 
 <details>
@@ -64,3 +65,11 @@ sequenceDiagram
 ```
 
 </details>
+
+Streaming messages vs blob messages.
+Reader can have methods: asStreamReader or asBlobReader.
+Same with writers
+
+Can Kafka handle streaming body messages?
+
+We need some metrics.

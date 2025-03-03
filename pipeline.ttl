@@ -18,7 +18,7 @@ rdfc:ShaclValidator a rdfc:JsProcessor;
   rdfc:entrypoint <./>;
   rdfc:file <./lib/processor.js>.
 
-<MyEpicJsRunner> a rdfc:Runner;
+<MyEpicJsRunner> a rdfc:CommandRunner;
   rdfc:handles rdfc:JsProcessor;
   rdfc:command "node bin/runner.js";
   rdfc:processor_definition <JsProcessorShape>.

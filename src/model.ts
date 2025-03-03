@@ -2,6 +2,8 @@ import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { Term } from '@rdfjs/types'
 import { Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
+import { CommandRunner, Runner, RunnerConfig } from './runner'
+import { Callbacks } from './orchestrator'
 
 export type Pipeline = {
   id: Term
@@ -11,18 +13,6 @@ export type Pipeline = {
 }
 
 export type URI = string
-
-// export type Runner = {
-//   id: URI
-//   type: RunnerType
-// }
-
-export type Runner = {
-  id: Term
-  handles: URI[]
-  processor_definition: URI
-  command: string
-}
 
 export type Processor = {
   id: Term
@@ -34,8 +24,18 @@ export type ProcessorType = {
   runner_type: URI
 }
 
+export const cbs: Callbacks = {
+  msg: async () => {},
+  close: async () => {},
+}
+
 const processor = $INLINE_FILE('./model.ttl')
-export const modelShapes = extractShapes(new Parser().parse(processor))
+export const modelShapes = extractShapes(new Parser().parse(processor), {
+  'https://w3id.org/rdf-connect/ontology#CommandRunner': (inp: {
+    config: RunnerConfig
+    command: string
+  }) => new CommandRunner(inp.command, inp.config),
+})
 export const PipelineShape = <BasicLens<Cont<Term>, Pipeline>>(
   modelShapes.lenses['Pipeline']
 )

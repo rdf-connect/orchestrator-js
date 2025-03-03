@@ -1,43 +1,16 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import {
-  Close,
-  Message,
   OrchestratorMessage,
-  Processor,
-  ProcessorInit,
   RunnerMessage,
   RunnerServer,
 } from './generated/service'
-import { Empty } from './generated/google/protobuf/empty'
-
-export interface ToRunner {
-  processor(proc: Processor): Promise<unknown>
-  start(): Promise<unknown>
-  message(msg: Message): Promise<unknown>
-  close(msg: Close): Promise<unknown>
-}
-
-export function stubToRunner(): ToRunner {
-  return {
-    processor: async () => {},
-    start: async () => {},
-    message: async () => {},
-    close: async () => {},
-  }
-}
-
-export interface FromRunner {
-  setWriter(orchestrator: ToRunner): Promise<void>
-  init(msg: ProcessorInit): Promise<void>
-  msg(msg: Message): Promise<void>
-  close(msg: Close): Promise<void>
-}
+import { Runner } from './runner'
 
 export class Server {
   server: RunnerServer
   readonly runners: {
-    [label: string]: { part: FromRunner; promise: () => void }
+    [label: string]: { part: Runner; promise: () => void }
   } = {}
 
   constructor() {
@@ -55,45 +28,22 @@ export class Server {
         }
 
         const write = promisify(stream.write.bind(stream))
-        const orchestrator_part: ToRunner = {
-          processor: (proc: Processor) => write({ proc }),
-          start: () => write({ start: Empty }),
-          message: (msg: Message) => write({ msg }),
-          close: (close: Close) => write({ close }),
-        }
-
         const runner = this.runners[msg.identify.uri]
+        runner.part.setChannel({
+          sendMessage: <(msg: RunnerMessage) => Promise<void>>write,
+          receiveMessage: stream,
+        })
 
-        ;(async () => {
-          for await (const chunk of stream) {
-            const msg: OrchestratorMessage = chunk
-            if (msg.msg) {
-              console.log('Data message', msg.msg)
-              runner.part.msg(msg.msg)
-            }
-            if (msg.init) {
-              console.log('Init message', msg.init)
-              runner.part.init(msg.init)
-            }
-            if (msg.close) {
-              console.log('Close message', msg.close)
-              runner.part.close(msg.close)
-            }
-            if (msg.identify) {
-              console.error("Didn't expect identify message")
-            }
-          }
-        })()
-        runner.part.setWriter(orchestrator_part)
         runner.promise()
       },
     }
   }
 
-  addRunner(uri: string, part: FromRunner): Promise<void> {
+  /// Tell the server to expect a runner to connect, returning a promise that resolves when this happens
+  expectRunner(runner: Runner): Promise<void> {
     return new Promise((res) => {
-      this.runners[uri] = {
-        part,
+      this.runners[runner.id.value] = {
+        part: runner,
         promise: () => res(),
       }
     })

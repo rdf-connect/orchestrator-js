@@ -145,7 +145,7 @@ ex:simple a ex:SimpleShape;
     string: '42',
     iri: 'http://example.org/ns#fourtyTwo',
     nested: {
-      '@id': '_:n3-41',
+      '@id': '_:n3-43',
       '@type': 'http://example.org/ns#SimpleShape',
       '@context': simpleShapeContext,
       string: '43',
@@ -165,11 +165,11 @@ ex:simple a ex:SimpleShape;
       `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
 <http://example.org/ns#simple> <http://example.org/ns#string> "42" .
 <http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
-_:n3-41 <http://example.org/ns#number> 43 .
-_:n3-41 <http://example.org/ns#string> "43" .
-_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
-_:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
-<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
 `,
     )
@@ -198,11 +198,11 @@ _:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
 <http://example.org/ns#simple> <http://example.org/ns#number> 42 .
 <http://example.org/ns#simple> <http://example.org/ns#string> "42" .
 <http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
-_:n3-41 <http://example.org/ns#number> 43 .
-_:n3-41 <http://example.org/ns#string> "43" .
-_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
-_:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
-<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#Nested> .
 `,
     )
@@ -220,7 +220,7 @@ _:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
         },
       },
       cbd: {
-        '@id': '_:n3-41',
+        '@id': '_:n3-43',
         'http://example.org/ns#number': [
           {
             '@type': 'http://www.w3.org/2001/XMLSchema#integer',
@@ -243,10 +243,10 @@ _:n3-41 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
     const quads_str = await getTurtle(document)
     console.log(quads_str)
     expect(quads_str).toEqual(
-      `_:n3-41 <http://example.org/ns#number> 43 .
-_:n3-41 <http://example.org/ns#string> "43" .
-_:n3-41 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
-<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-41 .
+      `_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
 `,
     )
