@@ -29,6 +29,7 @@ export class Server {
 
         const write = promisify(stream.write.bind(stream))
         const runner = this.runners[msg.identify.uri]
+
         runner.part.setChannel({
           sendMessage: <(msg: RunnerMessage) => Promise<void>>write,
           receiveMessage: stream,

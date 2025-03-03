@@ -1,13 +1,20 @@
 import * as grpc from '@grpc/grpc-js'
 import { readFile } from 'fs/promises'
 import { NamedNode, Parser } from 'n3'
-import { emptyPipeline, Pipeline, PipelineShape, Processor } from './model'
+import {
+  emptyPipeline,
+  modelShapes,
+  Pipeline,
+  PipelineShape,
+  Processor,
+} from './model'
 import { Definitions, Document, parse_processors } from '.'
 import { jsonld_to_string } from './util'
 import { Quad } from '@rdfjs/types'
 import { Close, Message, RunnerService } from './generated/service'
 import { Server } from './server'
 import { Runner } from './runner'
+import { empty } from 'rdf-lens'
 
 export type Callbacks = {
   msg: (msg: Message) => Promise<void>
@@ -102,11 +109,6 @@ export class Orchestrator implements Callbacks {
 
     const runner = runners[0]
     const processorShape = this.definitions[runner.processor_definition]
-    console.log(
-      'Found processor shape',
-      runner.processor_definition,
-      !!processorShape,
-    )
 
     const document = processorShape.addToDocument(
       proc.type.id,
@@ -171,6 +173,9 @@ export class Orchestrator implements Callbacks {
 export async function start(location: string) {
   const port = 50051
   const grpcServer = new grpc.Server()
+  const orchestrator = new Orchestrator(new Server())
+  setupOrchestratorLens(orchestrator)
+
   grpcServer.addService(RunnerService, orchestrator.server.server)
   await new Promise((res) =>
     grpcServer.bindAsync(
@@ -179,6 +184,7 @@ export async function start(location: string) {
       res,
     ),
   )
+
   const addr = 'localhost:' + port
   console.log('Grpc server is bound!', addr)
 
@@ -193,4 +199,8 @@ export async function start(location: string) {
   await orchestrator.startProcessors()
 }
 
-export const orchestrator = new Orchestrator(new Server())
+// Maps rdfc:Orchestrator to this orchestrator
+function setupOrchestratorLens(orchestrator: Orchestrator) {
+  modelShapes.lenses['https://w3id.org/rdf-connect/ontology#Orchestrator'] =
+    empty().map(() => orchestrator)
+}

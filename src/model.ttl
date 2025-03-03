@@ -55,6 +55,12 @@ _:id sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
     sh:datatype xsd:string;
+  ], [
+    sh:path ( );
+    sh:name "orchestrator";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Orchestrator;
   ].
 
 [ ] a sh:NodeShape;

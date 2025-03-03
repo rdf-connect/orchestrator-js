@@ -37,6 +37,7 @@ export const modelShapes = extractShapes(new Parser().parse(processor), {
     command: string
   }) => new CommandRunner(inp.command, inp.config),
 })
+
 export const PipelineShape = <BasicLens<Cont<Term>, Pipeline>>(
   modelShapes.lenses['Pipeline']
 )

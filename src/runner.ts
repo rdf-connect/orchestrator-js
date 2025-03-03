@@ -5,7 +5,7 @@ import {
   OrchestratorMessage,
   RunnerMessage,
 } from './generated/service'
-import { orchestrator, ProcessorInstance } from './orchestrator'
+import { Orchestrator, ProcessorInstance } from './orchestrator'
 import { spawn } from 'child_process'
 import { Empty } from './generated/google/protobuf/empty'
 import { Term } from '@rdfjs/types'
@@ -21,12 +21,13 @@ export type RunnerConfig = {
   id: Term
   handles: URI[]
   processor_definition: URI
+  orchestrator: Orchestrator
 }
 
 export abstract class Runner {
   protected sendMessage: (msg: RunnerMessage) => Promise<void> = async () => {}
-
   protected processors: { [id: string]: () => void } = {}
+  protected orchestrator: Orchestrator
 
   readonly id: Term
   readonly handles: URI[]
@@ -63,10 +64,10 @@ export abstract class Runner {
 
   async handleMessage(msg: OrchestratorMessage): Promise<void> {
     if (msg.msg) {
-      await orchestrator.msg(msg.msg)
+      await this.orchestrator.msg(msg.msg)
     }
     if (msg.close) {
-      await orchestrator.close(msg.close)
+      await this.orchestrator.close(msg.close)
     }
     if (msg.init) {
       this.processors[msg.init.uri]()

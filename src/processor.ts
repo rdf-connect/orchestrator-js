@@ -8,6 +8,6 @@ interface Reader {
 
 export default class ShaclValidator {
   constructor(reader: Reader) {
-    console.log('ShaclValidator init', reader);
+    console.log('ShaclValidator init', reader)
   }
 }
