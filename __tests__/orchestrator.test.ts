@@ -109,5 +109,12 @@ describe.only('Setup orchestrator', async () => {
     await startingPromise
 
     console.log(Object.values(runnerDict).map((x) => x.msgs))
+
+    await orchestrator.pipeline.runners[0].msg({
+      data: 'Hello world',
+      channel: 'SomeIri',
+    })
+
+    console.log(Object.values(runnerDict).map((x) => x.msgs))
   })
 })
