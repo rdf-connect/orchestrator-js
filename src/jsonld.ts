@@ -45,7 +45,7 @@ export type PropertyDTO = {
   maxCount?: number
 }
 export type ProcessorDTO = {
-  target: Term
+  target: Term[]
   properties: PropertyDTO[]
 }
 
@@ -123,7 +123,7 @@ function isNestedProperty(property: PropertyDTO): boolean {
 }
 
 export class PlainDefinition extends Definition implements ProcessorDTO {
-  target: Term
+  target: Term[]
   properties: PropertyDTO[]
 
   constructor(dto: ProcessorDTO) {
@@ -199,7 +199,11 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
     isNest: boolean = false,
   ): Document {
     const out = this.getFromCache(id, isNest)
-    out['@type'] = this.target.value
+    if (this.target.length > 1) {
+      out['@type'] = this.target.map((x) => x.value)
+    } else {
+      out['@type'] = this.target[0].value
+    }
     this.addToContext(out)
 
     for (const property of this.properties) {
@@ -257,11 +261,15 @@ export function parse_processors(quads: Quad[]): Definitions {
     .map((xs) => {
       const out: { [id: string]: Definition } = {}
       for (const processor of xs) {
-        out[processor.target.value] = processor
+        for (const v of processor.target) {
+          out[v.value] = processor
+        }
       }
       return out
     })
     .execute(quads)
+
+  console.log('defintions', Object.keys(dtos))
 
   dtos[RDFL.CBD] = new CBDDefinition()
   dtos[RDFL.Path] = new CBDDefinition()

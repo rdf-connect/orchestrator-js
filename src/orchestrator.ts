@@ -1,6 +1,5 @@
 import * as grpc from '@grpc/grpc-js'
-import { readFile } from 'fs/promises'
-import { NamedNode, Parser } from 'n3'
+import { NamedNode } from 'n3'
 import {
   emptyPipeline,
   modelShapes,
@@ -9,7 +8,7 @@ import {
   Processor,
 } from './model'
 import { Definitions, Document, parse_processors } from '.'
-import { jsonld_to_string } from './util'
+import { jsonld_to_string, readQuads } from './util'
 import { Quad } from '@rdfjs/types'
 import { Close, Message, RunnerService } from './generated/service'
 import { Server } from './server'
@@ -109,6 +108,11 @@ export class Orchestrator implements Callbacks {
 
     const runner = runners[0]
     const processorShape = this.definitions[runner.processor_definition]
+    console.log(
+      'Found processor shape for',
+      runner.processor_definition,
+      !!processorShape,
+    )
 
     const document = processorShape.addToDocument(
       proc.type.id,
@@ -160,9 +164,9 @@ export class Orchestrator implements Callbacks {
       throw errors
     }
 
-    instances.forEach(async (processor) => {
-      processor.runner.addProcessor(processor)
-    })
+    await Promise.all(
+      instances.map((processor) => processor.runner.addProcessor(processor)),
+    )
 
     await Promise.all(
       Object.values(this.pipeline.runners).map((x) => x.startProcessors()),
@@ -187,13 +191,8 @@ export async function start(location: string) {
 
   const addr = 'localhost:' + port
   console.log('Grpc server is bound!', addr)
-
   const iri = 'file://' + location
-  console.log('Loading', location)
-
-  const file = await readFile(location, { encoding: 'utf8' })
-  const quads = new Parser({ baseIRI: iri }).parse(file)
-
+  const quads = await readQuads([iri])
   orchestrator.setPipeline(quads, iri)
   await orchestrator.startRunners(addr)
   await orchestrator.startProcessors()

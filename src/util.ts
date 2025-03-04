@@ -1,6 +1,11 @@
 import { JsonLdParser } from 'jsonld-streaming-parser'
-import { Context, Document } from '.'
+import { Context, Document, modelQuads } from '.'
 import { Quad } from '@rdfjs/types'
+import { NamedNode, Parser } from 'n3'
+import { createTermNamespace } from '@treecg/types'
+import { readFile } from 'fs/promises'
+
+const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 
 export function jsonld_to_string(document: Document): string
 export function jsonld_to_string(document: Document, context: Context): string
@@ -40,4 +45,87 @@ export async function jsonld_to_quads(document: Document, context?: Context) {
   myParser.end()
   await endPromise
   return quads
+}
+
+export async function readQuads(
+  todo: string[],
+  done = new Set<string>(),
+  quads: Quad[] = [],
+): Promise<Quad[]> {
+  let current = todo.pop()
+
+  if (quads.length === 0) {
+    quads.push(...modelQuads)
+  }
+
+  while (current !== undefined) {
+    if (!done.has(current)) {
+      done.add(current)
+
+      const url = new URL(current)
+      if (url.protocol !== 'file:') {
+        throw 'No supported protocol ' + url.protocol
+      }
+
+      // Read the quads
+      const txt = await readFile(url.pathname, { encoding: 'utf8' })
+      const newQuads = new Parser({ baseIRI: current }).parse(txt)
+
+      todo.push(
+        ...newQuads
+          .filter(
+            (q) =>
+              q.subject.equals(new NamedNode(current!)) &&
+              q.predicate.equals(OWL.imports),
+          )
+          .map((x) => x.object.value),
+      )
+
+      quads.push(...newQuads)
+    }
+
+    current = todo.pop()
+  }
+
+  return quads
+}
+
+export async function expandQuads(uri: string, quads: Quad[]): Promise<Quad[]> {
+  quads.push(...modelQuads)
+  const todo = quads
+    .filter(
+      (q) =>
+        q.subject.equals(new NamedNode(uri)) && q.predicate.equals(OWL.imports),
+    )
+    .map((x) => x.object.value)
+
+  return await readQuads(todo, new Set(uri), quads)
+}
+
+export function createAsyncIterable<T>() {
+  const queue: T[] = []
+  let resolveNext: ((value: IteratorResult<T>) => void) | null = null
+
+  return {
+    push(item: T) {
+      if (resolveNext) {
+        resolveNext({ value: item, done: false })
+        resolveNext = null
+      } else {
+        queue.push(item)
+      }
+    },
+
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        if (queue.length > 0) {
+          yield queue.shift()!
+        } else {
+          await new Promise<IteratorResult<T>>(
+            (resolve) => (resolveNext = resolve),
+          )
+        }
+      }
+    },
+  }
 }

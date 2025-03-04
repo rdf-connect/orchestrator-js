@@ -67,7 +67,6 @@
     sh:name "target";
     sh:path sh:targetClass;
     sh:minCount 1;
-    sh:maxCount 1;
     sh:datatype xsd:iri;
   ], [
     sh:name "id";

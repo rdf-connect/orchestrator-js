@@ -27,6 +27,16 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
+  sh:targetClass rdfc:TestRunner;
+  sh:property [
+    sh:path ( );
+    sh:name "config";
+    sh:class <RunnerConfig>;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+[ ] a sh:NodeShape;
   sh:targetClass rdfc:CommandRunner;
   sh:property [
     sh:path ( );

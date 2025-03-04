@@ -120,3 +120,28 @@ export class CommandRunner extends Runner {
     })
   }
 }
+
+export class TestRunner extends Runner {
+  private startedProcessors: string[] = []
+  constructor(config: RunnerConfig) {
+    super(config)
+    console.log('Built testrunner')
+  }
+
+  async start(addr: string): Promise<void> {
+    console.log("Test runner 'starting'", addr)
+  }
+
+  async mockStartProcessor(): Promise<void> {
+    console.log('Mock start processors')
+    for (const uri of this.startedProcessors) {
+      await this.handleMessage({ init: { uri } })
+    }
+  }
+
+  async addProcessor(processor: ProcessorInstance): Promise<void> {
+    const res = super.addProcessor(processor)
+    this.startedProcessors.push(processor.proc.id.value)
+    await res
+  }
+}
