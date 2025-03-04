@@ -1,11 +1,119 @@
 import { describe, expect, test } from 'vitest'
-import { Quad } from '@rdfjs/types'
+import { Quad, Term } from '@rdfjs/types'
 import { Document, parse_processors } from '../lib/index'
 import { jsonld_to_quads } from '../lib/util'
 import { NamedNode, Parser, Writer } from 'n3'
 
 function parse_quads(inp: string): Quad[] {
   return new Parser().parse(inp)
+}
+
+function subjectSet(a: Quad[]): Set<string> {
+  return new Set(
+    a
+      .map((a) => a.subject)
+      .filter((a) => a.termType == 'NamedNode')
+      .map((a) => a.value),
+  )
+}
+
+function per_predicate(quads: Quad[]): {
+  [pred: string]: { bn: Term[]; others: Term[] }
+} {
+  const out: {
+    [pred: string]: { bn: Term[]; others: Term[] }
+  } = {}
+  quads.forEach((t) => {
+    if (!out[t.predicate.value]) {
+      out[t.predicate.value] = { bn: [], others: [] }
+    }
+    const obj = out[t.predicate.value]
+
+    if (t.object.termType == 'BlankNode') {
+      obj.bn.push(t.object)
+    } else {
+      obj.others.push(t.object)
+    }
+  })
+  return out
+}
+
+function check_quads_are_equal(a: Quad[], b: Quad[]) {
+  const s1: Set<string> = subjectSet(a)
+  const s2: Set<string> = subjectSet(b)
+
+  expect(s1, 'Quads have same namednode subjects').toEqual(s2)
+
+  function equal_for(
+    sa: Term,
+    sb: Term,
+    da: Term[] = [],
+    db: Term[] = [],
+  ): string | undefined {
+    const done_a = da.some((x) => x.equals(sa))
+    const done_b = db.some((x) => x.equals(sb))
+    if (done_a !== done_b) {
+      return `subject loop detected between ${sa} ${done_a} and ${sb} ${done_b}`
+    }
+    da.push(sa)
+    db.push(sb)
+
+    const a_triples = a.filter((x) => x.subject.equals(sa))
+    const b_triples = b.filter((x) => x.subject.equals(sb))
+
+    if (a_triples.length !== b_triples.length) {
+      return `Found inequal amount of triples for ${sa} and ${sb} `
+    }
+
+    const per_predicate_a = per_predicate(a_triples)
+    const per_predicate_b = per_predicate(b_triples)
+
+    for (const pred of Object.keys(per_predicate_a)) {
+      const tas = per_predicate_a[pred]
+      const tbs = per_predicate_b[pred] || []
+      if (tas.bn.length !== tbs.bn.length) {
+        return `Expected equal amount of blanknode objects for ${sa}/${sb} ${pred}`
+      }
+
+      if (tas.others.length !== tbs.others.length) {
+        return `Expected equal amount of other objects for ${sa}/${sb} ${pred}`
+      }
+
+      // check others
+      for (const other of tas.others) {
+        if (!tbs.others.some((b) => other.equals(b))) {
+          const expected = {
+            v: other.value,
+            tt: other.termType,
+          }
+          const found = tbs.others.map((x) => ({ v: x.value, tt: x.termType }))
+          return `Didn't find correct objects ${JSON.stringify(expected)} in ${JSON.stringify(
+            found,
+          )}`
+        }
+      }
+
+      // Check blank nodes
+      for (const sa of tas.bn) {
+        const tries = tbs.bn.map((sb) =>
+          equal_for(sa, sb, da.slice(), db.slice()),
+        )
+
+        const found_correct = tries.findIndex((a) => a === undefined) != -1
+        if (!found_correct) {
+          return tries.join(' or ')
+        }
+      }
+    }
+  }
+
+  for (const subj of s1) {
+    const err = equal_for(new NamedNode(subj), new NamedNode(subj))
+    if (err !== undefined) {
+      console.error(err)
+    }
+    expect(err, 'Subject equality for ' + subj).toBeUndefined()
+  }
 }
 
 describe('Extract processor correctly', () => {
@@ -161,17 +269,19 @@ ex:simple a ex:SimpleShape;
       Object.assign({ '@id': 'http://example.org/ns#simple' }, simpleShape),
     )
     const quads_str = await getTurtle(document)
-    expect(quads_str).toEqual(
-      `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+    const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
 <http://example.org/ns#simple> <http://example.org/ns#string> "42" .
 <http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
-_:n3-44 <http://example.org/ns#number> 43 .
-_:n3-44 <http://example.org/ns#string> "43" .
-_:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
-_:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
-<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
+_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
-`,
+`
+    check_quads_are_equal(
+      new Parser().parse(quads_str),
+      new Parser().parse(eql_to),
     )
   })
 
@@ -192,8 +302,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
       inner: simpleShape,
     })
     const quads_str = await getTurtle(document)
-    expect(quads_str).toEqual(
-      `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+    const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
 <http://example.org/ns#simple> <http://example.org/ns#number> 42 .
 <http://example.org/ns#simple> <http://example.org/ns#string> "42" .
@@ -204,13 +313,15 @@ _:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
 _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
 <http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#Nested> .
-`,
+`
+    check_quads_are_equal(
+      new Parser().parse(quads_str),
+      new Parser().parse(eql_to),
     )
   })
 
   test('can parse cbd shapes', async () => {
     const document = getDocument(EX + 'simple', EX + 'CBD')
-    console.log(JSON.stringify(document, undefined, 2))
     expect(document).toEqual({
       '@id': 'http://example.org/ns#simple',
       '@type': 'http://example.org/ns#CBD',
@@ -241,14 +352,16 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
       },
     })
     const quads_str = await getTurtle(document)
-    console.log(quads_str)
-    expect(quads_str).toEqual(
-      `_:n3-44 <http://example.org/ns#number> 43 .
+    const eql_to = `_:n3-44 <http://example.org/ns#number> 43 .
 _:n3-44 <http://example.org/ns#string> "43" .
 _:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
 <http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
-`,
+`
+
+    check_quads_are_equal(
+      new Parser().parse(quads_str),
+      new Parser().parse(eql_to),
     )
   })
 
