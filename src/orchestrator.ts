@@ -7,52 +7,16 @@ import {
   PipelineShape,
   Processor,
 } from './model'
-import { Definitions, Document, parse_processors } from '.'
-import { jsonld_to_string, readQuads } from './util'
+import { Definitions, parse_processors } from '.'
+import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
 import { Close, Message, RunnerService } from './generated/service'
 import { Server } from './server'
-import { Runner } from './runner'
 import { empty } from 'rdf-lens'
 
 export type Callbacks = {
   msg: (msg: Message) => Promise<void>
   close: (close: Close) => Promise<void>
-}
-
-export class ProcessorInstance {
-  proc: Processor
-  runner: Runner
-  document: Document
-  arguments: string
-  constructor(
-    proc: Processor,
-    quads: Quad[],
-    discoveredShapes: Definitions,
-    runner: Runner,
-    document: Document,
-  ) {
-    this.proc = proc
-    console.log('--- proc', proc.id.value)
-
-    const shape = discoveredShapes[proc.type.id.value]
-    if (!shape) {
-      console.error(
-        `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.id.value})`,
-      )
-      throw 'No shape definition found'
-    }
-
-    const jsonld_document = shape.addToDocument(
-      proc.id,
-      quads,
-      discoveredShapes,
-    )
-
-    this.arguments = jsonld_to_string(jsonld_document)
-    this.runner = runner
-    this.document = document
-  }
 }
 
 function pipelineIsString(pipeline: Pipeline | string): pipeline is string {
@@ -145,7 +109,12 @@ export class Orchestrator implements Callbacks {
       throw errors
     }
 
-    await Promise.all(promises)
+    const results = await Promise.allSettled(promises)
+    const promiseErrors = results.filter((x) => x.status === 'rejected')
+    if (promiseErrors.length > 0) {
+      throw promiseErrors
+    }
+
     await Promise.all(this.pipeline.runners.map((x) => x.startProcessors()))
   }
 }

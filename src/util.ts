@@ -2,10 +2,7 @@ import { JsonLdParser } from 'jsonld-streaming-parser'
 import { Context, Document, modelQuads } from '.'
 import { Quad } from '@rdfjs/types'
 import { NamedNode, Parser } from 'n3'
-import {
-  createNamespace,
-  createTermNamespace,
-} from '@treecg/types'
+import { createNamespace, createTermNamespace } from '@treecg/types'
 import { readFile } from 'fs/promises'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
