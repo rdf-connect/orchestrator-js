@@ -2,10 +2,19 @@ import { JsonLdParser } from 'jsonld-streaming-parser'
 import { Context, Document, modelQuads } from '.'
 import { Quad } from '@rdfjs/types'
 import { NamedNode, Parser } from 'n3'
-import { createTermNamespace } from '@treecg/types'
+import {
+  createNamespace,
+  createTermNamespace,
+} from '@treecg/types'
 import { readFile } from 'fs/promises'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
+
+export const RDFC = createNamespace(
+  'https://w3id.org/rdf-connect/ontology#',
+  (x) => x,
+  'Reader',
+)
 
 export function jsonld_to_string(document: Document): string
 export function jsonld_to_string(document: Document, context: Context): string
@@ -104,12 +113,12 @@ export async function expandQuads(uri: string, quads: Quad[]): Promise<Quad[]> {
 
 export function createAsyncIterable<T>() {
   const queue: T[] = []
-  let resolveNext: ((value: IteratorResult<T>) => void) | null = null
+  let resolveNext: ((value: T) => void) | null = null
 
   return {
     push(item: T) {
       if (resolveNext) {
-        resolveNext({ value: item, done: false })
+        resolveNext(item)
         resolveNext = null
       } else {
         queue.push(item)
@@ -121,9 +130,7 @@ export function createAsyncIterable<T>() {
         if (queue.length > 0) {
           yield queue.shift()!
         } else {
-          await new Promise<IteratorResult<T>>(
-            (resolve) => (resolveNext = resolve),
-          )
+          yield await new Promise<T>((resolve) => (resolveNext = resolve))
         }
       }
     },

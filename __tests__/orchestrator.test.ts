@@ -1,13 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import { Server } from '../lib/server'
 import { Channels, Runner, TestRunner } from '../lib/runner'
+import { createAsyncIterable, expandQuads } from '../lib/util'
 import { OrchestratorMessage, RunnerMessage } from '../lib/generated/service'
-import {
-  createAsyncIterable,
-  expandQuads,
-  modelShapes,
-  Orchestrator,
-} from '../lib'
+import { modelShapes, Orchestrator } from '../lib'
 import path from 'path'
 import { Parser } from 'n3'
 import { empty } from 'rdf-lens'
@@ -63,15 +59,16 @@ describe.only('Setup orchestrator', async () => {
   rdfc:runner ex:runner1, ex:runner2.
 
 <p1> a ex:Proc1;
-  rdfc:input "proc1 input";
-  rdfc:output "proc1 output".
+  rdfc:input ex:c1;
+  rdfc:output ex:c2 .
 
 <p2> a ex:Proc2;
-  rdfc:input "proc2 input";
-  rdfc:output "proc2 output".
+  rdfc:input ex:c2;
+  rdfc:output ex:c1.
 `
 
   const iri = 'file://' + location
+  console.log(expandQuads)
   const quads = await expandQuads(
     iri,
     new Parser({ baseIRI: iri }).parse(content),
@@ -89,6 +86,7 @@ describe.only('Setup orchestrator', async () => {
     const prom = orchestrator.startRunners('')
     await new Promise((res) => setTimeout(res, 200))
     const runnerDict = server.connectRunners()
+    const runners = Object.values(runnerDict)
 
     console.log(Object.keys(runnerDict))
     expect([...Object.keys(runnerDict)]).toEqual([
@@ -108,13 +106,46 @@ describe.only('Setup orchestrator', async () => {
     // This promise resolves after the procesors are started
     await startingPromise
 
-    console.log(Object.values(runnerDict).map((x) => x.msgs))
+    console.log(
+      JSON.stringify(
+        runners.map((x) => x.msgs),
+        undefined,
+        2,
+      ),
+    )
 
-    await orchestrator.pipeline.runners[0].msg({
+    // Try send message directly via orchestrator to <p1> which is part of runner1
+    await orchestrator.msg({
       data: 'Hello world',
-      channel: 'SomeIri',
+      channel: 'http://example.org/c1',
     })
 
-    console.log(Object.values(runnerDict).map((x) => x.msgs))
+    await new Promise((res) => setTimeout(res, 20))
+    expect(
+      runnerDict['http://example.org/runner1'].msgs.length,
+      'this runner received a message',
+    ).toBe(3)
+    expect(
+      runnerDict['http://example.org/runner2'].msgs.length,
+      "this runner didnt' received a message",
+    ).toBe(2)
+
+    // Try send message directly from <p1> runner1 to <p2> which is part of runner2
+    runnerDict['http://example.org/runner1'].send({
+      msg: {
+        data: 'Hello world',
+        channel: 'http://example.org/c2',
+      },
+    })
+
+    await new Promise((res) => setTimeout(res, 20))
+    expect(
+      runnerDict['http://example.org/runner1'].msgs.length,
+      'this runner received a message',
+    ).toBe(3)
+    expect(
+      runnerDict['http://example.org/runner2'].msgs.length,
+      'this runner received a message',
+    ).toBe(3)
   })
 })

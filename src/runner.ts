@@ -5,12 +5,30 @@ import {
   OrchestratorMessage,
   RunnerMessage,
 } from './generated/service'
-import { Orchestrator, ProcessorInstance } from './orchestrator'
+import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
 import { Empty } from './generated/google/protobuf/empty'
-import { Term } from '@rdfjs/types'
+import { Quad, Term } from '@rdfjs/types'
 import { URI } from './model'
 import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
+import { Definitions } from './jsonld'
+import { Processor } from './model'
+import { jsonld_to_string, RDFC } from './util'
+
+function walkJson(
+  obj: unknown,
+  cb: (value: { [id: string]: unknown }) => void,
+) {
+  if (obj && typeof obj === 'object') {
+    cb(<{ [id: string]: unknown }>obj) // Call function on the current object
+  }
+
+  if ((obj && typeof obj === 'object') || Array.isArray(obj)) {
+    for (const v of Object.values(obj)) {
+      walkJson(v, cb)
+    }
+  }
+}
 
 export type Channels = {
   sendMessage: (msg: RunnerMessage) => Promise<void>
@@ -32,6 +50,8 @@ export abstract class Runner {
   readonly id: Term
   readonly handles: URI[]
   readonly processor_definition: URI
+
+  readonly handlesChannels: Set<string> = new Set()
   constructor(config: RunnerConfig) {
     Object.assign(this, config)
   }
@@ -55,7 +75,9 @@ export abstract class Runner {
   }
 
   async msg(msg: Message) {
-    await this.sendMessage({ msg })
+    if (this.handlesChannels.has(msg.channel)) {
+      await this.sendMessage({ msg })
+    }
   }
 
   async close(close: Close) {
@@ -63,6 +85,7 @@ export abstract class Runner {
   }
 
   async handleMessage(msg: OrchestratorMessage): Promise<void> {
+    console.log('Runner handle msg', msg)
     if (msg.msg) {
       await this.orchestrator.msg(msg.msg)
     }
@@ -79,17 +102,65 @@ export abstract class Runner {
 
   // Tells the runner to start a processor with configuration
   // Returning a promise that resolves when the processor is initialized
-  addProcessor(processor: ProcessorInstance): Promise<void> {
-    this.sendMessage({
+  async addProcessor(
+    proc: Processor,
+    quads: Quad[],
+    discoveredShapes: Definitions,
+  ): Promise<void> {
+    const shape = discoveredShapes[proc.type.id.value]
+    if (!shape) {
+      console.error(
+        `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.id.value})`,
+      )
+      throw 'No shape definition found'
+    }
+
+    const jsonld_document = shape.addToDocument(
+      proc.id,
+      quads,
+      discoveredShapes,
+    )
+
+    walkJson(jsonld_document, (obj) => {
+      if (obj['@type'] && obj['@id'] && obj['@type'] === RDFC.Reader) {
+        const ids = Array.isArray(obj['@id']) ? obj['@id'] : [obj['@id']]
+        for (const id of ids) {
+          if (typeof id === 'string') {
+            console.log('Found writer!', id)
+            this.handlesChannels.add(id)
+          }
+        }
+      }
+    })
+
+    const args = jsonld_to_string(jsonld_document)
+
+    const processorShape = discoveredShapes[this.processor_definition]
+    console.log(
+      'Found processor shape for',
+      this.processor_definition,
+      !!processorShape,
+    )
+
+    const document = processorShape.addToDocument(
+      proc.type.id,
+      quads,
+      discoveredShapes,
+    )
+
+    const processorIsInit = new Promise(
+      (res) => (this.processors[proc.id.value] = () => res(undefined)),
+    )
+
+    await this.sendMessage({
       proc: {
-        uri: processor.proc.id.value,
-        config: '{}',
-        arguments: processor.arguments,
+        uri: proc.id.value,
+        config: jsonld_to_string(document),
+        arguments: args,
       },
     })
-    return new Promise((res) => {
-      this.processors[processor.proc.id.value] = res
-    })
+
+    await processorIsInit
   }
 }
 
@@ -139,9 +210,13 @@ export class TestRunner extends Runner {
     }
   }
 
-  async addProcessor(processor: ProcessorInstance): Promise<void> {
-    const res = super.addProcessor(processor)
-    this.startedProcessors.push(processor.proc.id.value)
+  async addProcessor(
+    proc: Processor,
+    quads: Quad[],
+    discoveredShapes: Definitions,
+  ): Promise<void> {
+    this.startedProcessors.push(proc.id.value)
+    const res = super.addProcessor(proc, quads, discoveredShapes)
     await res
   }
 }

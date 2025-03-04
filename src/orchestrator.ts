@@ -106,20 +106,7 @@ export class Orchestrator implements Callbacks {
       )})`
     }
 
-    const runner = runners[0]
-    const processorShape = this.definitions[runner.processor_definition]
-    console.log(
-      'Found processor shape for',
-      runner.processor_definition,
-      !!processorShape,
-    )
-
-    const document = processorShape.addToDocument(
-      proc.type.id,
-      this.quads,
-      this.definitions,
-    )
-    return { runner, document }
+    return runners[0]
   }
 
   async close(close: Close) {
@@ -127,7 +114,8 @@ export class Orchestrator implements Callbacks {
   }
 
   async msg(msg: Message) {
-    await Promise.all(this.pipeline.runners.map((inst) => inst.msg(msg)))
+    console.log('Forwarding msg', msg)
+    await Promise.all(this.pipeline.runners.map((runner) => runner.msg(msg)))
   }
 
   async startRunners(addr: string) {
@@ -142,19 +130,12 @@ export class Orchestrator implements Callbacks {
 
   async startProcessors() {
     const errors = []
-    const instances = []
+    const promises = []
+
     for (const proc of this.pipeline.processors) {
       try {
-        const { runner, document } = this.findRunner(proc)
-        instances.push(
-          new ProcessorInstance(
-            proc,
-            this.quads,
-            this.definitions,
-            runner,
-            document,
-          ),
-        )
+        const runner = this.findRunner(proc)
+        promises.push(runner.addProcessor(proc, this.quads, this.definitions))
       } catch (ex) {
         errors.push(ex)
       }
@@ -164,13 +145,8 @@ export class Orchestrator implements Callbacks {
       throw errors
     }
 
-    await Promise.all(
-      instances.map((processor) => processor.runner.addProcessor(processor)),
-    )
-
-    await Promise.all(
-      Object.values(this.pipeline.runners).map((x) => x.startProcessors()),
-    )
+    await Promise.all(promises)
+    await Promise.all(this.pipeline.runners.map((x) => x.startProcessors()))
   }
 }
 

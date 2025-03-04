@@ -27,6 +27,19 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
+  sh:targetClass rdfc:Reader.
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:Writer.
+  # sh:property [
+  #   sh:path ( );
+  #   sh:name "uri";
+  #   sh:datatype xsd:any;
+  #   sh:maxCount 1;
+  #   sh:minCount 1;
+  # ].
+
+[ ] a sh:NodeShape;
   sh:targetClass rdfc:TestRunner;
   sh:property [
     sh:path ( );

@@ -37,12 +37,12 @@ ex:Proc2 a ex:Lang2;
     sh:name "input";
     sh:minCount 1;
     sh:maxCount 1;
-    sh:datatype xsd:string;
+    sh:class rdfc:Reader;
   ], [
     sh:path rdfc:output;
     sh:name "output";
     sh:minCount 1;
     sh:maxCount 1;
-    sh:datatype xsd:string;
+    sh:class rdfc:Writer;
   ].
 
