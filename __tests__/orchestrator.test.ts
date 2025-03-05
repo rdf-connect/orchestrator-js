@@ -10,7 +10,7 @@ import { empty } from 'rdf-lens'
 
 class TestServer extends Server {
   expectRunner(runner: Runner): Promise<void> {
-    console.log('Expecting runner')
+    this.logger.info('Expecting runner')
     return super.expectRunner(runner)
   }
   connectRunners(): {
@@ -24,7 +24,7 @@ class TestServer extends Server {
       const msgs: RunnerMessage[] = []
       const rs = createAsyncIterable<OrchestratorMessage>()
       const send = (msg: OrchestratorMessage) => {
-        console.log('Got msg ', msg)
+        this.logger.info('Got msg ', msg)
         rs.push(msg)
       }
       out[runner.part.id.value] = { msgs, send }
@@ -68,7 +68,6 @@ describe.only('Setup orchestrator', async () => {
 `
 
   const iri = 'file://' + location
-  console.log(expandQuads)
   const quads = await expandQuads(
     iri,
     new Parser({ baseIRI: iri }).parse(content),
@@ -86,9 +85,7 @@ describe.only('Setup orchestrator', async () => {
     const prom = orchestrator.startRunners('')
     await new Promise((res) => setTimeout(res, 200))
     const runnerDict = server.connectRunners()
-    const runners = Object.values(runnerDict)
 
-    console.log(Object.keys(runnerDict))
     expect([...Object.keys(runnerDict)]).toEqual([
       'http://example.org/runner1',
       'http://example.org/runner2',
@@ -105,14 +102,6 @@ describe.only('Setup orchestrator', async () => {
 
     // This promise resolves after the procesors are started
     await startingPromise
-
-    console.log(
-      JSON.stringify(
-        runners.map((x) => x.msgs),
-        undefined,
-        2,
-      ),
-    )
 
     // Try send message directly via orchestrator to <p1> which is part of runner1
     await orchestrator.msg({

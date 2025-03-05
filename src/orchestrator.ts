@@ -7,6 +7,7 @@ import {
   PipelineShape,
   Processor,
 } from './model'
+import { getLoggerFor } from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
@@ -24,6 +25,8 @@ function pipelineIsString(pipeline: Pipeline | string): pipeline is string {
 }
 
 export class Orchestrator implements Callbacks {
+  protected readonly logger = getLoggerFor(this)
+
   server: Server
 
   pipeline: Pipeline = emptyPipeline
@@ -62,27 +65,32 @@ export class Orchestrator implements Callbacks {
       x.handles.some((handle) => handle === proc.type.runner_type),
     )
     if (runners.length !== 1) {
-      if (runners.length === 0) {
-        throw `No viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type})`
-      }
-      throw `Too many viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type}) (found ${runners.map(
-        (x) => x.id.value,
-      )})`
+      const error =
+        runners.length === 0
+          ? `No viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type})`
+          : `Too many viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type}) (found ${runners.map(
+              (x) => x.id.value,
+            )})`
+
+      this.logger.error(error)
+      throw error
     }
 
     return runners[0]
   }
 
   async close(close: Close) {
+    this.logger.debug('Got close message for channel ' + close.channel)
     await Promise.all(this.pipeline.runners.map((inst) => inst.close(close)))
   }
 
   async msg(msg: Message) {
-    console.log('Forwarding msg', msg)
+    this.logger.debug('Got data message for channel ' + msg.channel)
     await Promise.all(this.pipeline.runners.map((runner) => runner.msg(msg)))
   }
 
   async startRunners(addr: string) {
+    this.logger.debug('Starting ' + this.pipeline.runners.length + ' runners')
     await Promise.all(
       Object.values(this.pipeline.runners).map(async (r) => {
         const prom = this.server.expectRunner(r)
@@ -93,6 +101,9 @@ export class Orchestrator implements Callbacks {
   }
 
   async startProcessors() {
+    this.logger.debug(
+      'Starting ' + this.pipeline.processors.length + ' processors',
+    )
     const errors = []
     const promises = []
 
@@ -106,12 +117,18 @@ export class Orchestrator implements Callbacks {
     }
 
     if (errors.length > 0) {
+      for (const e of errors) {
+        this.logger.error(e)
+      }
       throw errors
     }
 
     const results = await Promise.allSettled(promises)
     const promiseErrors = results.filter((x) => x.status === 'rejected')
     if (promiseErrors.length > 0) {
+      for (const e of promiseErrors) {
+        this.logger.error(e.reason)
+      }
       throw promiseErrors
     }
 
@@ -120,6 +137,7 @@ export class Orchestrator implements Callbacks {
 }
 
 export async function start(location: string) {
+  const logger = getLoggerFor('start')
   const port = 50051
   const grpcServer = new grpc.Server()
   const orchestrator = new Orchestrator(new Server())
@@ -135,7 +153,7 @@ export async function start(location: string) {
   )
 
   const addr = 'localhost:' + port
-  console.log('Grpc server is bound!', addr)
+  logger.info('Grpc server is bound! ' + addr)
   const iri = 'file://' + location
   const quads = await readQuads([iri])
   orchestrator.setPipeline(quads, iri)

@@ -1,14 +1,12 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import { RunnerClient, RunnerMessage } from './generated/service'
-import { jsonld_to_quads } from './util'
-import { Writer } from 'n3'
 
 export async function start(addr: string, uri: string) {
   const client = new RunnerClient(addr, grpc.credentials.createInsecure())
 
   const stream = client.connect()
-  console.log('Connected with server', addr)
+  console.log('Connected with server ' + addr)
   const writable = promisify(stream.write.bind(stream))
   await writable({ identify: { uri } })
 
@@ -16,12 +14,9 @@ export async function start(addr: string, uri: string) {
     const msg: RunnerMessage = chunk
     if (msg.proc) {
       const processor = msg.proc
-      console.log('Starting processor with ', processor)
+      console.log('Starting processor ' + processor.uri)
       const args = JSON.parse(processor.arguments)
-      console.log(JSON.stringify(args, undefined, 2))
-
-      const quads = await jsonld_to_quads(args)
-      console.log(new Writer().quadsToString(quads))
+      console.log(JSON.stringify(args))
 
       await writable({ init: { uri: processor.uri } })
     }
@@ -35,7 +30,7 @@ export async function start(addr: string, uri: string) {
       break
     }
     if (msg.msg) {
-      console.log('Data message')
+      console.log('Data message to ' + msg.msg.channel)
       const int = parseInt(msg.msg.data)
       if (int !== 0) {
         await writable({

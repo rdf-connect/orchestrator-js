@@ -6,8 +6,10 @@ import {
   RunnerServer,
 } from './generated/service'
 import { Runner } from './runner'
+import { getLoggerFor } from './logUtil'
 
 export class Server {
+  protected logger = getLoggerFor(this)
   server: RunnerServer
   readonly runners: {
     [label: string]: { part: Runner; promise: () => void }
@@ -22,10 +24,10 @@ export class Server {
           await new Promise((res) => stream.once('data', res))
         )
         if (!msg.identify) {
-          throw 'Expected the first msg to be an identify message'
-        } else {
-          console.log('Got identify message')
+          this.logger.error('Expected the first msg to be an identify message')
+          throw new Error('Expected the first msg to be an identify message')
         }
+        this.logger.debug('Got identify message')
 
         const write = promisify(stream.write.bind(stream))
         const runner = this.runners[msg.identify.uri]

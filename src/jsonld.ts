@@ -269,8 +269,6 @@ export function parse_processors(quads: Quad[]): Definitions {
     })
     .execute(quads)
 
-  console.log('defintions', Object.keys(dtos))
-
   dtos[RDFL.CBD] = new CBDDefinition()
   dtos[RDFL.Path] = new CBDDefinition()
 

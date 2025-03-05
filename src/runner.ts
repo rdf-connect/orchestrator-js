@@ -14,6 +14,8 @@ import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
 import { Definitions } from './jsonld'
 import { Processor } from './model'
 import { jsonld_to_string, RDFC } from './util'
+import { getLoggerFor } from './logUtil'
+import { Logger } from 'winston'
 
 function walkJson(
   obj: unknown,
@@ -43,6 +45,8 @@ export type RunnerConfig = {
 }
 
 export abstract class Runner {
+  protected logger = getLoggerFor(this)
+
   protected sendMessage: (msg: RunnerMessage) => Promise<void> = async () => {}
   protected processors: { [id: string]: () => void } = {}
   protected orchestrator: Orchestrator
@@ -85,18 +89,23 @@ export abstract class Runner {
   }
 
   async handleMessage(msg: OrchestratorMessage): Promise<void> {
-    console.log('Runner handle msg', msg)
     if (msg.msg) {
+      this.logger.debug('Runner handle data msg to ', msg.msg.channel)
       await this.orchestrator.msg(msg.msg)
     }
     if (msg.close) {
+      this.logger.debug('Runner handle close msg to ', msg.close.channel)
       await this.orchestrator.close(msg.close)
     }
     if (msg.init) {
+      this.logger.debug('Runner handle init msg for ', msg.init.uri)
+      if (msg.init.error) {
+        this.logger.error('Init message error ' + msg.init.error)
+      }
       this.processors[msg.init.uri]()
     }
     if (msg.identify) {
-      console.error("Didn't expect identify message")
+      this.logger.error("Didn't expect identify message")
     }
   }
 
@@ -109,7 +118,7 @@ export abstract class Runner {
   ): Promise<void> {
     const shape = discoveredShapes[proc.type.id.value]
     if (!shape) {
-      console.error(
+      this.logger.error(
         `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.id.value})`,
       )
       throw 'No shape definition found'
@@ -126,7 +135,6 @@ export abstract class Runner {
         const ids = Array.isArray(obj['@id']) ? obj['@id'] : [obj['@id']]
         for (const id of ids) {
           if (typeof id === 'string') {
-            console.log('Found writer!', id)
             this.handlesChannels.add(id)
           }
         }
@@ -136,12 +144,13 @@ export abstract class Runner {
     const args = jsonld_to_string(jsonld_document)
 
     const processorShape = discoveredShapes[this.processor_definition]
-    console.log(
-      'Found processor shape for',
-      this.processor_definition,
-      !!processorShape,
-    )
-
+    if (processorShape === undefined) {
+      const error = new Error(
+        'Failed to find processor shape for ' + this.processor_definition,
+      )
+      this.logger.error(error.message)
+      throw error
+    }
     const document = processorShape.addToDocument(
       proc.type.id,
       quads,
@@ -165,29 +174,33 @@ export abstract class Runner {
 }
 
 export class CommandRunner extends Runner {
+  protected procLogger: Logger
+
   private command: string
   constructor(command: string, config: RunnerConfig) {
     super(config)
-    console.log('Built a command runner!')
+    this.procLogger = getLoggerFor(this.id.value)
+    this.logger.debug('Built a command runner!')
     this.command = command
   }
+
   async start(addr: string) {
     const uri = this.id.value
     const [cmd, ...args] = parse(this.command) as string[]
     args.push(addr, uri)
-    console.log('starting with ', [cmd, ...args])
+    this.logger.debug('starting with ' + JSON.stringify([cmd, ...args]))
     const child = spawn(cmd, args)
 
     child.stdout.on('data', (data) => {
-      console.log(`${uri}: ${data}`)
+      this.procLogger.info((<string>data.toString()).trim())
     })
 
     child.stderr.on('data', (data) => {
-      console.error(`${uri}: ${data}`)
+      this.procLogger.error((<string>data.toString()).trim())
     })
 
     child.on('close', (code) => {
-      console.log(`${uri}: exited with code ${code}`)
+      this.procLogger.info(`exited with code ${code}`)
     })
   }
 }
@@ -196,15 +209,15 @@ export class TestRunner extends Runner {
   private startedProcessors: string[] = []
   constructor(config: RunnerConfig) {
     super(config)
-    console.log('Built testrunner')
+    this.logger.info('Built testrunner')
   }
 
   async start(addr: string): Promise<void> {
-    console.log("Test runner 'starting'", addr)
+    this.logger.info("Test runner 'starting'", addr)
   }
 
   async mockStartProcessor(): Promise<void> {
-    console.log('Mock start processors')
+    this.logger.info('Mock start processors')
     for (const uri of this.startedProcessors) {
       await this.handleMessage({ init: { uri } })
     }
