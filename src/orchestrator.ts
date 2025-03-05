@@ -7,7 +7,7 @@ import {
   PipelineShape,
   Processor,
 } from './model'
-import { getLoggerFor } from './logUtil'
+import { getLoggerFor, reevaluteLevels, setPipelineFile } from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
@@ -25,7 +25,7 @@ function pipelineIsString(pipeline: Pipeline | string): pipeline is string {
 }
 
 export class Orchestrator implements Callbacks {
-  protected readonly logger = getLoggerFor(this)
+  protected readonly logger = getLoggerFor([this])
 
   server: Server
 
@@ -137,7 +137,7 @@ export class Orchestrator implements Callbacks {
 }
 
 export async function start(location: string) {
-  const logger = getLoggerFor('start')
+  const logger = getLoggerFor(['start'])
   const port = 50051
   const grpcServer = new grpc.Server()
   const orchestrator = new Orchestrator(new Server())
@@ -155,7 +155,9 @@ export async function start(location: string) {
   const addr = 'localhost:' + port
   logger.info('Grpc server is bound! ' + addr)
   const iri = 'file://' + location
+  setPipelineFile(iri)
   const quads = await readQuads([iri])
+  reevaluteLevels()
   orchestrator.setPipeline(quads, iri)
   await orchestrator.startRunners(addr)
   await orchestrator.startProcessors()

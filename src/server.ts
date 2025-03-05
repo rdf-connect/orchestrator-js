@@ -9,7 +9,7 @@ import { Runner } from './runner'
 import { getLoggerFor } from './logUtil'
 
 export class Server {
-  protected logger = getLoggerFor(this)
+  protected logger = getLoggerFor([this])
   server: RunnerServer
   readonly runners: {
     [label: string]: { part: Runner; promise: () => void }

@@ -4,6 +4,7 @@ import { Quad } from '@rdfjs/types'
 import { NamedNode, Parser } from 'n3'
 import { createNamespace, createTermNamespace } from '@treecg/types'
 import { readFile } from 'fs/promises'
+import { prefixFound } from './logUtil'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 
@@ -75,7 +76,11 @@ export async function readQuads(
 
       // Read the quads
       const txt = await readFile(url.pathname, { encoding: 'utf8' })
-      const newQuads = new Parser({ baseIRI: current }).parse(txt)
+      const newQuads = new Parser({ baseIRI: current }).parse(
+        txt,
+        undefined,
+        prefixFound,
+      )
 
       todo.push(
         ...newQuads

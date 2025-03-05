@@ -45,7 +45,7 @@ export type RunnerConfig = {
 }
 
 export abstract class Runner {
-  protected logger = getLoggerFor(this)
+  protected logger: Logger
 
   protected sendMessage: (msg: RunnerMessage) => Promise<void> = async () => {}
   protected processors: { [id: string]: () => void } = {}
@@ -58,6 +58,7 @@ export abstract class Runner {
   readonly handlesChannels: Set<string> = new Set()
   constructor(config: RunnerConfig) {
     Object.assign(this, config)
+    this.logger = getLoggerFor([this.id.value, this], this.handles)
   }
 
   abstract start(addr: string): Promise<void>
@@ -174,12 +175,9 @@ export abstract class Runner {
 }
 
 export class CommandRunner extends Runner {
-  protected procLogger: Logger
-
   private command: string
   constructor(command: string, config: RunnerConfig) {
     super(config)
-    this.procLogger = getLoggerFor(this.id.value)
     this.logger.debug('Built a command runner!')
     this.command = command
   }
@@ -188,19 +186,21 @@ export class CommandRunner extends Runner {
     const uri = this.id.value
     const [cmd, ...args] = parse(this.command) as string[]
     args.push(addr, uri)
+
+    this.logger.info('debug msg should follow')
     this.logger.debug('starting with ' + JSON.stringify([cmd, ...args]))
     const child = spawn(cmd, args)
 
     child.stdout.on('data', (data) => {
-      this.procLogger.info((<string>data.toString()).trim())
+      this.logger.info((<string>data.toString()).trim())
     })
 
     child.stderr.on('data', (data) => {
-      this.procLogger.error((<string>data.toString()).trim())
+      this.logger.error((<string>data.toString()).trim())
     })
 
     child.on('close', (code) => {
-      this.procLogger.info(`exited with code ${code}`)
+      this.logger.info(`exited with code ${code}`)
     })
   }
 }
@@ -214,6 +214,8 @@ export class TestRunner extends Runner {
 
   async start(addr: string): Promise<void> {
     this.logger.info("Test runner 'starting'", addr)
+    this.logger.info('debug msg should follow')
+    this.logger.debug('connecting with ' + addr)
   }
 
   async mockStartProcessor(): Promise<void> {

@@ -1,16 +1,52 @@
+import { PrefixCallback } from 'n3'
+import path from 'path'
 import winston, { format, Logger } from 'winston'
 
-// const PROCESSOR_NAME = 'template-processor-ts'
+const urlBase = new URL('file://' + path.resolve('./pipeline.ttl'))
+function fileLess(st: string): string {
+  const segments = st.split('/')
+  segments.pop()
+  return segments.join('/') + '/'
+}
+const prefixes: { prefix: string; node: string }[] = [
+  {
+    prefix: '',
+    node: fileLess(urlBase.toString()),
+  },
+]
+
+export function setPipelineFile(path: string) {
+  while (prefixes.pop()) {
+    //clearing
+  }
+  prefixes.push({ prefix: '', node: fileLess(path) })
+}
+
+export const prefixFound: PrefixCallback = (prefix, node) => {
+  prefixes.push({ prefix, node: node.value })
+}
 
 const DEBUG_ENV = (process.env.DEBUG || '').toLowerCase()
 const LOG_LEVEL_ENV = process.env.LOG_LEVEL
-function getLogLevelFor(name?: string) {
+function collapse(node: string): string[] {
+  const out = [new URL(node, urlBase).toString(), node]
+  for (const pref of prefixes) {
+    if (node.startsWith(pref.node)) {
+      out.push(node.replace(pref.node, pref.prefix + ':'))
+    }
+  }
+  return out
+}
+
+function getLogLevelFor(name: string[]) {
   if (LOG_LEVEL_ENV) return LOG_LEVEL_ENV
-  if (DEBUG_ENV === '*' || DEBUG_ENV === "rdfc") return 'debug'
+  if (DEBUG_ENV === '*' || DEBUG_ENV === 'rdfc') return 'debug'
+
+  const names = name.flatMap(collapse).map((x) => x.toLowerCase())
   if (
     name !== undefined &&
     DEBUG_ENV &&
-    DEBUG_ENV.includes(name.toLowerCase())
+    names.some((name) => DEBUG_ENV.includes(name.toLowerCase()))
   ) {
     return 'debug'
   } else {
@@ -18,63 +54,95 @@ function getLogLevelFor(name?: string) {
   }
 }
 
-const classLoggers = new WeakMap<Constructor, Logger>()
+const loggers: { logger: Logger; names: string[]; aliases: string[] }[] = []
 const stringLoggers = new Map<string, Logger>()
 
-export function getLoggerFor(loggable: string | Instance): Logger {
+function getSuperClassNames(instance: Instance): string[] {
+  const out: string[] = []
+
+  let current = instance
+
+  while (current.constructor.name !== 'Object') {
+    out.push(current.constructor.name)
+    const next = Object.getPrototypeOf(current)
+    if (next == current) break
+    current = next
+  }
+
+  return out
+}
+export function getLoggerFor(
+  loggable: (string | Instance)[],
+  xs: (string | Instance)[] = [],
+): Logger {
   let logger: Logger
-  if (typeof loggable === 'string') {
-    if (stringLoggers.has(loggable)) {
-      logger = stringLoggers.get(loggable)!
-    } else {
-      logger = createLogger(loggable)
-      stringLoggers.set(loggable, logger)
+  const aliases = xs.flatMap((x) =>
+    typeof x === 'string' ? [x] : getSuperClassNames(x),
+  )
+  const names = loggable.map((x) => {
+    if (typeof x === 'string') {
+      aliases.push(x)
+      return x
     }
+    aliases.push(...getSuperClassNames(x))
+    return x.constructor.name
+  })
+  const id = names.join('/')
+  if (stringLoggers.has(id)) {
+    logger = stringLoggers.get(id)!
   } else {
-    const { constructor } = loggable
-    if (classLoggers.has(constructor)) {
-      logger = classLoggers.get(constructor)!
-    } else {
-      logger = createLogger(constructor.name)
-      classLoggers.set(constructor, logger)
-    }
+    logger = createLogger(names, aliases)
+    stringLoggers.set(id, logger)
+    loggers.push({ logger, names, aliases })
   }
   return logger
 }
 
-function createLogger(label: string): Logger {
-  return winston.createLogger({
-    level: getLogLevelFor(label),
-    format: format.combine(
-      format.label({ label }),
-      format.colorize(),
-      format.timestamp(),
-      format.metadata({
-        fillExcept: ['level', 'timestamp', 'label', 'message'],
+export function reevaluteLevels() {
+  for (const logger of loggers) {
+    const level = getLogLevelFor(logger.aliases)
+    logger.logger.clear()
+    logger.logger.level = level
+    logger.logger.add(
+      new winston.transports.Console({
+        level: level,
+        format: formatter(logger.names),
       }),
-      format.printf(
-        ({
-          level: levelInner,
-          message,
-          label: labelInner,
-          timestamp,
-        }): string => `${timestamp} [${labelInner}] ${levelInner}: ${message}`,
-      ),
+    )
+    // logger.logger.format = formatter(logger.names)
+  }
+}
+
+function formatter(names: string[]) {
+  return format.combine(
+    // This should be done better
+    format.label({ label: names.map((x) => collapse(x).pop()!).join(', ') }),
+    format.colorize(),
+    format.timestamp(),
+    format.metadata({
+      fillExcept: ['level', 'timestamp', 'label', 'message'],
+    }),
+    format.printf(
+      ({ level: levelInner, message, label: labelInner, timestamp }): string =>
+        `${timestamp} [${labelInner}] ${levelInner}: ${message}`,
     ),
-    transports: [new winston.transports.Console()],
+  )
+}
+function createLogger(names: string[], aliases: string[]): Logger {
+  return winston.createLogger({
+    transports: [
+      new winston.transports.Console({
+        level: getLogLevelFor(aliases),
+        format: formatter(names),
+      }),
+    ],
   })
 }
 
-/**
- * Any class constructor.
- */
 interface Constructor {
   name: string
 }
 
-/**
- * Any class instance.
- */
 interface Instance {
   constructor: Constructor
 }
