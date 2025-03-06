@@ -13,10 +13,13 @@ import {
   type ClientDuplexStream,
   type ClientOptions,
   type ClientReadableStream,
+  type ClientWritableStream,
   type handleBidiStreamingCall,
+  type handleClientStreamingCall,
   type handleServerStreamingCall,
   makeGenericClientConstructor,
   Metadata,
+  type ServiceError,
   type UntypedServiceImplementation,
 } from '@grpc/grpc-js'
 import { Empty } from './google/protobuf/empty'
@@ -84,6 +87,13 @@ export interface Id {
 
 export interface DataChunk {
   data: Uint8Array
+}
+
+export interface LogMessage {
+  level: string
+  msg: string
+  entities: string[]
+  aliases: string[]
 }
 
 function createBaseError(): Error {
@@ -1074,6 +1084,124 @@ export const DataChunk: MessageFns<DataChunk> = {
   },
 }
 
+function createBaseLogMessage(): LogMessage {
+  return { level: '', msg: '', entities: [], aliases: [] }
+}
+
+export const LogMessage: MessageFns<LogMessage> = {
+  encode(
+    message: LogMessage,
+    writer: BinaryWriter = new BinaryWriter(),
+  ): BinaryWriter {
+    if (message.level !== '') {
+      writer.uint32(10).string(message.level)
+    }
+    if (message.msg !== '') {
+      writer.uint32(18).string(message.msg)
+    }
+    for (const v of message.entities) {
+      writer.uint32(26).string(v!)
+    }
+    for (const v of message.aliases) {
+      writer.uint32(34).string(v!)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogMessage {
+    const reader =
+      input instanceof BinaryReader ? input : new BinaryReader(input)
+    let end = length === undefined ? reader.len : reader.pos + length
+    const message = createBaseLogMessage()
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break
+          }
+
+          message.level = reader.string()
+          continue
+        }
+        case 2: {
+          if (tag !== 18) {
+            break
+          }
+
+          message.msg = reader.string()
+          continue
+        }
+        case 3: {
+          if (tag !== 26) {
+            break
+          }
+
+          message.entities.push(reader.string())
+          continue
+        }
+        case 4: {
+          if (tag !== 34) {
+            break
+          }
+
+          message.aliases.push(reader.string())
+          continue
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break
+      }
+      reader.skip(tag & 7)
+    }
+    return message
+  },
+
+  fromJSON(object: any): LogMessage {
+    return {
+      level: isSet(object.level) ? globalThis.String(object.level) : '',
+      msg: isSet(object.msg) ? globalThis.String(object.msg) : '',
+      entities: globalThis.Array.isArray(object?.entities)
+        ? object.entities.map((e: any) => globalThis.String(e))
+        : [],
+      aliases: globalThis.Array.isArray(object?.aliases)
+        ? object.aliases.map((e: any) => globalThis.String(e))
+        : [],
+    }
+  },
+
+  toJSON(message: LogMessage): unknown {
+    const obj: any = {}
+    if (message.level !== '') {
+      obj.level = message.level
+    }
+    if (message.msg !== '') {
+      obj.msg = message.msg
+    }
+    if (message.entities?.length) {
+      obj.entities = message.entities
+    }
+    if (message.aliases?.length) {
+      obj.aliases = message.aliases
+    }
+    return obj
+  },
+
+  create<I extends Exact<DeepPartial<LogMessage>, I>>(base?: I): LogMessage {
+    return LogMessage.fromPartial(base ?? ({} as any))
+  },
+  fromPartial<I extends Exact<DeepPartial<LogMessage>, I>>(
+    object: I,
+  ): LogMessage {
+    const message = createBaseLogMessage()
+    message.level = object.level ?? ''
+    message.msg = object.msg ?? ''
+    message.entities = object.entities?.map((e) => e) || []
+    message.aliases = object.aliases?.map((e) => e) || []
+    return message
+  },
+}
+
 export type RunnerService = typeof RunnerService
 export const RunnerService = {
   connect: {
@@ -1107,12 +1235,24 @@ export const RunnerService = {
       Buffer.from(DataChunk.encode(value).finish()),
     responseDeserialize: (value: Buffer) => DataChunk.decode(value),
   },
+  logStream: {
+    path: '/mypackage.Runner/logStream',
+    requestStream: true,
+    responseStream: false,
+    requestSerialize: (value: LogMessage) =>
+      Buffer.from(LogMessage.encode(value).finish()),
+    requestDeserialize: (value: Buffer) => LogMessage.decode(value),
+    responseSerialize: (value: Empty) =>
+      Buffer.from(Empty.encode(value).finish()),
+    responseDeserialize: (value: Buffer) => Empty.decode(value),
+  },
 } as const
 
 export interface RunnerServer extends UntypedServiceImplementation {
   connect: handleBidiStreamingCall<OrchestratorMessage, RunnerMessage>
   sendStreamMessage: handleBidiStreamingCall<DataChunk, Id>
   receiveStreamMessage: handleServerStreamingCall<Id, DataChunk>
+  logStream: handleClientStreamingCall<LogMessage, Empty>
 }
 
 export interface RunnerClient extends Client {
@@ -1141,6 +1281,22 @@ export interface RunnerClient extends Client {
     metadata?: Metadata,
     options?: Partial<CallOptions>,
   ): ClientReadableStream<DataChunk>
+  logStream(
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientWritableStream<LogMessage>
+  logStream(
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientWritableStream<LogMessage>
+  logStream(
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientWritableStream<LogMessage>
+  logStream(
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientWritableStream<LogMessage>
 }
 
 export const RunnerClient = makeGenericClientConstructor(

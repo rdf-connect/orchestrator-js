@@ -3,6 +3,7 @@ import { promisify } from 'util'
 import {
   DataChunk,
   Id,
+  LogMessage,
   OrchestratorMessage,
   RunnerMessage,
   RunnerServer,
@@ -112,6 +113,13 @@ export class Server {
             },
             data: write,
           })
+        }
+      },
+      logStream: async (call) => {
+        for await (const chunk of call) {
+          const msg: LogMessage = chunk
+          const logger = getLoggerFor(msg.entities, msg.aliases)
+          logger.log(msg.level, msg.msg)
         }
       },
     }
