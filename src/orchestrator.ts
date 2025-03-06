@@ -11,12 +11,7 @@ import { getLoggerFor, reevaluteLevels, setPipelineFile } from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
-import {
-  Close,
-  Message,
-  RunnerService,
-  StreamMessage,
-} from './generated/service'
+import { Close, Message, RunnerService, StreamMessage } from '@rdfc/proto'
 import { Server } from './server'
 import { empty } from 'rdf-lens'
 

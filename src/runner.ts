@@ -1,14 +1,14 @@
 import { parse } from 'shell-quote'
 import {
   Close,
+  Empty,
   Message,
   OrchestratorMessage,
   RunnerMessage,
   StreamMessage,
-} from './generated/service'
+} from '@rdfc/proto'
 import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
-import { Empty } from './generated/google/protobuf/empty'
 import { Quad, Term } from '@rdfjs/types'
 import { URI } from './model'
 import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'

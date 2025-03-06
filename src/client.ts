@@ -7,7 +7,7 @@ import {
   OrchestratorMessage,
   RunnerClient,
   RunnerMessage,
-} from './generated/service'
+} from '@rdfc/proto'
 import winston from 'winston'
 import Transport from 'winston-transport'
 

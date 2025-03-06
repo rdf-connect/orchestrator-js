@@ -7,7 +7,7 @@ import {
   OrchestratorMessage,
   RunnerMessage,
   RunnerServer,
-} from './generated/service'
+} from '@rdfc/proto'
 import { Runner } from './runner'
 import { getLoggerFor } from './logUtil'
 
