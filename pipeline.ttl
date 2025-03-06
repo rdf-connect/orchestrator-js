@@ -1,3 +1,4 @@
+@prefix ex: <http://example.org/>.
 @prefix foaf: <http://xmlns.com/foaf/0.1/>.
 @prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
@@ -6,14 +7,14 @@
 @prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
 
 <MyChannel> a rdfc:Channel.
-
 <> a rdfc:Pipeline;
   rdfc:dependency <>;
   rdfc:processor <MyEpicProcessor>;
   rdfc:runner <MyEpicJsRunner>.
 
 <MyEpicProcessor> a rdfc:ShaclValidator;
-  rdfc:input (foaf:friend foaf:friend) .
+  rdfc:path ( foaf:friend foaf:friend );
+  rdfc:input ex:input.
 
 rdfc:ShaclValidator a rdfc:JsProcessor;
   rdfc:entrypoint <./>;
@@ -43,10 +44,16 @@ rdfc:ShaclValidator a rdfc:JsProcessor;
 [ ] a sh:NodeShape;
   sh:targetClass rdfc:ShaclValidator;
   sh:property [
+    sh:path rdfc:path;
+    sh:name "path";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfl:Path;
+  ], [
     sh:path rdfc:input;
     sh:name "input";
     sh:minCount 1;
     sh:maxCount 1;
-    sh:class rdfl:Path;
+    sh:class rdfc:Reader;
   ].
 

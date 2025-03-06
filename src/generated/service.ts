@@ -12,7 +12,9 @@ import {
   Client,
   type ClientDuplexStream,
   type ClientOptions,
+  type ClientReadableStream,
   type handleBidiStreamingCall,
+  type handleServerStreamingCall,
   makeGenericClientConstructor,
   Metadata,
   type UntypedServiceImplementation,
@@ -51,7 +53,12 @@ export interface Close {
 
 export interface Message {
   channel: string
-  data: string
+  data: Uint8Array
+}
+
+export interface StreamMessage {
+  id: Id | undefined
+  channel: string
 }
 
 /** All possible messages that runners handle */
@@ -60,6 +67,7 @@ export interface RunnerMessage {
   start?: Empty | undefined
   msg?: Message | undefined
   close?: Close | undefined
+  streamMsg?: StreamMessage | undefined
 }
 
 export interface OrchestratorMessage {
@@ -67,6 +75,15 @@ export interface OrchestratorMessage {
   msg?: Message | undefined
   close?: Close | undefined
   identify?: Identify | undefined
+  streamMsg?: StreamMessage | undefined
+}
+
+export interface Id {
+  id: number
+}
+
+export interface DataChunk {
+  data: Uint8Array
 }
 
 function createBaseError(): Error {
@@ -445,7 +462,7 @@ export const Close: MessageFns<Close> = {
 }
 
 function createBaseMessage(): Message {
-  return { channel: '', data: '' }
+  return { channel: '', data: new Uint8Array(0) }
 }
 
 export const Message: MessageFns<Message> = {
@@ -456,8 +473,8 @@ export const Message: MessageFns<Message> = {
     if (message.channel !== '') {
       writer.uint32(10).string(message.channel)
     }
-    if (message.data !== '') {
-      writer.uint32(18).string(message.data)
+    if (message.data.length !== 0) {
+      writer.uint32(18).bytes(message.data)
     }
     return writer
   },
@@ -483,7 +500,7 @@ export const Message: MessageFns<Message> = {
             break
           }
 
-          message.data = reader.string()
+          message.data = reader.bytes()
           continue
         }
       }
@@ -498,7 +515,9 @@ export const Message: MessageFns<Message> = {
   fromJSON(object: any): Message {
     return {
       channel: isSet(object.channel) ? globalThis.String(object.channel) : '',
-      data: isSet(object.data) ? globalThis.String(object.data) : '',
+      data: isSet(object.data)
+        ? bytesFromBase64(object.data)
+        : new Uint8Array(0),
     }
   },
 
@@ -507,8 +526,8 @@ export const Message: MessageFns<Message> = {
     if (message.channel !== '') {
       obj.channel = message.channel
     }
-    if (message.data !== '') {
-      obj.data = message.data
+    if (message.data.length !== 0) {
+      obj.data = base64FromBytes(message.data)
     }
     return obj
   },
@@ -519,13 +538,106 @@ export const Message: MessageFns<Message> = {
   fromPartial<I extends Exact<DeepPartial<Message>, I>>(object: I): Message {
     const message = createBaseMessage()
     message.channel = object.channel ?? ''
-    message.data = object.data ?? ''
+    message.data = object.data ?? new Uint8Array(0)
+    return message
+  },
+}
+
+function createBaseStreamMessage(): StreamMessage {
+  return { id: undefined, channel: '' }
+}
+
+export const StreamMessage: MessageFns<StreamMessage> = {
+  encode(
+    message: StreamMessage,
+    writer: BinaryWriter = new BinaryWriter(),
+  ): BinaryWriter {
+    if (message.id !== undefined) {
+      Id.encode(message.id, writer.uint32(10).fork()).join()
+    }
+    if (message.channel !== '') {
+      writer.uint32(18).string(message.channel)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StreamMessage {
+    const reader =
+      input instanceof BinaryReader ? input : new BinaryReader(input)
+    let end = length === undefined ? reader.len : reader.pos + length
+    const message = createBaseStreamMessage()
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break
+          }
+
+          message.id = Id.decode(reader, reader.uint32())
+          continue
+        }
+        case 2: {
+          if (tag !== 18) {
+            break
+          }
+
+          message.channel = reader.string()
+          continue
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break
+      }
+      reader.skip(tag & 7)
+    }
+    return message
+  },
+
+  fromJSON(object: any): StreamMessage {
+    return {
+      id: isSet(object.id) ? Id.fromJSON(object.id) : undefined,
+      channel: isSet(object.channel) ? globalThis.String(object.channel) : '',
+    }
+  },
+
+  toJSON(message: StreamMessage): unknown {
+    const obj: any = {}
+    if (message.id !== undefined) {
+      obj.id = Id.toJSON(message.id)
+    }
+    if (message.channel !== '') {
+      obj.channel = message.channel
+    }
+    return obj
+  },
+
+  create<I extends Exact<DeepPartial<StreamMessage>, I>>(
+    base?: I,
+  ): StreamMessage {
+    return StreamMessage.fromPartial(base ?? ({} as any))
+  },
+  fromPartial<I extends Exact<DeepPartial<StreamMessage>, I>>(
+    object: I,
+  ): StreamMessage {
+    const message = createBaseStreamMessage()
+    message.id =
+      object.id !== undefined && object.id !== null
+        ? Id.fromPartial(object.id)
+        : undefined
+    message.channel = object.channel ?? ''
     return message
   },
 }
 
 function createBaseRunnerMessage(): RunnerMessage {
-  return { proc: undefined, start: undefined, msg: undefined, close: undefined }
+  return {
+    proc: undefined,
+    start: undefined,
+    msg: undefined,
+    close: undefined,
+    streamMsg: undefined,
+  }
 }
 
 export const RunnerMessage: MessageFns<RunnerMessage> = {
@@ -544,6 +656,9 @@ export const RunnerMessage: MessageFns<RunnerMessage> = {
     }
     if (message.close !== undefined) {
       Close.encode(message.close, writer.uint32(34).fork()).join()
+    }
+    if (message.streamMsg !== undefined) {
+      StreamMessage.encode(message.streamMsg, writer.uint32(42).fork()).join()
     }
     return writer
   },
@@ -588,6 +703,14 @@ export const RunnerMessage: MessageFns<RunnerMessage> = {
           message.close = Close.decode(reader, reader.uint32())
           continue
         }
+        case 5: {
+          if (tag !== 42) {
+            break
+          }
+
+          message.streamMsg = StreamMessage.decode(reader, reader.uint32())
+          continue
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break
@@ -603,6 +726,9 @@ export const RunnerMessage: MessageFns<RunnerMessage> = {
       start: isSet(object.start) ? Empty.fromJSON(object.start) : undefined,
       msg: isSet(object.msg) ? Message.fromJSON(object.msg) : undefined,
       close: isSet(object.close) ? Close.fromJSON(object.close) : undefined,
+      streamMsg: isSet(object.streamMsg)
+        ? StreamMessage.fromJSON(object.streamMsg)
+        : undefined,
     }
   },
 
@@ -619,6 +745,9 @@ export const RunnerMessage: MessageFns<RunnerMessage> = {
     }
     if (message.close !== undefined) {
       obj.close = Close.toJSON(message.close)
+    }
+    if (message.streamMsg !== undefined) {
+      obj.streamMsg = StreamMessage.toJSON(message.streamMsg)
     }
     return obj
   },
@@ -648,6 +777,10 @@ export const RunnerMessage: MessageFns<RunnerMessage> = {
       object.close !== undefined && object.close !== null
         ? Close.fromPartial(object.close)
         : undefined
+    message.streamMsg =
+      object.streamMsg !== undefined && object.streamMsg !== null
+        ? StreamMessage.fromPartial(object.streamMsg)
+        : undefined
     return message
   },
 }
@@ -658,6 +791,7 @@ function createBaseOrchestratorMessage(): OrchestratorMessage {
     msg: undefined,
     close: undefined,
     identify: undefined,
+    streamMsg: undefined,
   }
 }
 
@@ -677,6 +811,9 @@ export const OrchestratorMessage: MessageFns<OrchestratorMessage> = {
     }
     if (message.identify !== undefined) {
       Identify.encode(message.identify, writer.uint32(34).fork()).join()
+    }
+    if (message.streamMsg !== undefined) {
+      StreamMessage.encode(message.streamMsg, writer.uint32(42).fork()).join()
     }
     return writer
   },
@@ -724,6 +861,14 @@ export const OrchestratorMessage: MessageFns<OrchestratorMessage> = {
           message.identify = Identify.decode(reader, reader.uint32())
           continue
         }
+        case 5: {
+          if (tag !== 42) {
+            break
+          }
+
+          message.streamMsg = StreamMessage.decode(reader, reader.uint32())
+          continue
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break
@@ -743,6 +888,9 @@ export const OrchestratorMessage: MessageFns<OrchestratorMessage> = {
       identify: isSet(object.identify)
         ? Identify.fromJSON(object.identify)
         : undefined,
+      streamMsg: isSet(object.streamMsg)
+        ? StreamMessage.fromJSON(object.streamMsg)
+        : undefined,
     }
   },
 
@@ -759,6 +907,9 @@ export const OrchestratorMessage: MessageFns<OrchestratorMessage> = {
     }
     if (message.identify !== undefined) {
       obj.identify = Identify.toJSON(message.identify)
+    }
+    if (message.streamMsg !== undefined) {
+      obj.streamMsg = StreamMessage.toJSON(message.streamMsg)
     }
     return obj
   },
@@ -788,6 +939,137 @@ export const OrchestratorMessage: MessageFns<OrchestratorMessage> = {
       object.identify !== undefined && object.identify !== null
         ? Identify.fromPartial(object.identify)
         : undefined
+    message.streamMsg =
+      object.streamMsg !== undefined && object.streamMsg !== null
+        ? StreamMessage.fromPartial(object.streamMsg)
+        : undefined
+    return message
+  },
+}
+
+function createBaseId(): Id {
+  return { id: 0 }
+}
+
+export const Id: MessageFns<Id> = {
+  encode(message: Id, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== 0) {
+      writer.uint32(8).uint64(message.id)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Id {
+    const reader =
+      input instanceof BinaryReader ? input : new BinaryReader(input)
+    let end = length === undefined ? reader.len : reader.pos + length
+    const message = createBaseId()
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break
+          }
+
+          message.id = longToNumber(reader.uint64())
+          continue
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break
+      }
+      reader.skip(tag & 7)
+    }
+    return message
+  },
+
+  fromJSON(object: any): Id {
+    return { id: isSet(object.id) ? globalThis.Number(object.id) : 0 }
+  },
+
+  toJSON(message: Id): unknown {
+    const obj: any = {}
+    if (message.id !== 0) {
+      obj.id = Math.round(message.id)
+    }
+    return obj
+  },
+
+  create<I extends Exact<DeepPartial<Id>, I>>(base?: I): Id {
+    return Id.fromPartial(base ?? ({} as any))
+  },
+  fromPartial<I extends Exact<DeepPartial<Id>, I>>(object: I): Id {
+    const message = createBaseId()
+    message.id = object.id ?? 0
+    return message
+  },
+}
+
+function createBaseDataChunk(): DataChunk {
+  return { data: new Uint8Array(0) }
+}
+
+export const DataChunk: MessageFns<DataChunk> = {
+  encode(
+    message: DataChunk,
+    writer: BinaryWriter = new BinaryWriter(),
+  ): BinaryWriter {
+    if (message.data.length !== 0) {
+      writer.uint32(10).bytes(message.data)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DataChunk {
+    const reader =
+      input instanceof BinaryReader ? input : new BinaryReader(input)
+    let end = length === undefined ? reader.len : reader.pos + length
+    const message = createBaseDataChunk()
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break
+          }
+
+          message.data = reader.bytes()
+          continue
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break
+      }
+      reader.skip(tag & 7)
+    }
+    return message
+  },
+
+  fromJSON(object: any): DataChunk {
+    return {
+      data: isSet(object.data)
+        ? bytesFromBase64(object.data)
+        : new Uint8Array(0),
+    }
+  },
+
+  toJSON(message: DataChunk): unknown {
+    const obj: any = {}
+    if (message.data.length !== 0) {
+      obj.data = base64FromBytes(message.data)
+    }
+    return obj
+  },
+
+  create<I extends Exact<DeepPartial<DataChunk>, I>>(base?: I): DataChunk {
+    return DataChunk.fromPartial(base ?? ({} as any))
+  },
+  fromPartial<I extends Exact<DeepPartial<DataChunk>, I>>(
+    object: I,
+  ): DataChunk {
+    const message = createBaseDataChunk()
+    message.data = object.data ?? new Uint8Array(0)
     return message
   },
 }
@@ -805,10 +1087,32 @@ export const RunnerService = {
       Buffer.from(RunnerMessage.encode(value).finish()),
     responseDeserialize: (value: Buffer) => RunnerMessage.decode(value),
   },
+  sendStreamMessage: {
+    path: '/mypackage.Runner/sendStreamMessage',
+    requestStream: true,
+    responseStream: true,
+    requestSerialize: (value: DataChunk) =>
+      Buffer.from(DataChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer) => DataChunk.decode(value),
+    responseSerialize: (value: Id) => Buffer.from(Id.encode(value).finish()),
+    responseDeserialize: (value: Buffer) => Id.decode(value),
+  },
+  receiveStreamMessage: {
+    path: '/mypackage.Runner/receiveStreamMessage',
+    requestStream: false,
+    responseStream: true,
+    requestSerialize: (value: Id) => Buffer.from(Id.encode(value).finish()),
+    requestDeserialize: (value: Buffer) => Id.decode(value),
+    responseSerialize: (value: DataChunk) =>
+      Buffer.from(DataChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer) => DataChunk.decode(value),
+  },
 } as const
 
 export interface RunnerServer extends UntypedServiceImplementation {
   connect: handleBidiStreamingCall<OrchestratorMessage, RunnerMessage>
+  sendStreamMessage: handleBidiStreamingCall<DataChunk, Id>
+  receiveStreamMessage: handleServerStreamingCall<Id, DataChunk>
 }
 
 export interface RunnerClient extends Client {
@@ -820,6 +1124,23 @@ export interface RunnerClient extends Client {
     metadata: Metadata,
     options?: Partial<CallOptions>,
   ): ClientDuplexStream<OrchestratorMessage, RunnerMessage>
+  sendStreamMessage(): ClientDuplexStream<DataChunk, Id>
+  sendStreamMessage(
+    options: Partial<CallOptions>,
+  ): ClientDuplexStream<DataChunk, Id>
+  sendStreamMessage(
+    metadata: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientDuplexStream<DataChunk, Id>
+  receiveStreamMessage(
+    request: Id,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<DataChunk>
+  receiveStreamMessage(
+    request: Id,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<DataChunk>
 }
 
 export const RunnerClient = makeGenericClientConstructor(
@@ -833,6 +1154,31 @@ export const RunnerClient = makeGenericClientConstructor(
   ): RunnerClient
   service: typeof RunnerService
   serviceName: string
+}
+
+function bytesFromBase64(b64: string): Uint8Array {
+  if ((globalThis as any).Buffer) {
+    return Uint8Array.from(globalThis.Buffer.from(b64, 'base64'))
+  } else {
+    const bin = globalThis.atob(b64)
+    const arr = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; ++i) {
+      arr[i] = bin.charCodeAt(i)
+    }
+    return arr
+  }
+}
+
+function base64FromBytes(arr: Uint8Array): string {
+  if ((globalThis as any).Buffer) {
+    return globalThis.Buffer.from(arr).toString('base64')
+  } else {
+    const bin: string[] = []
+    arr.forEach((byte) => {
+      bin.push(globalThis.String.fromCharCode(byte))
+    })
+    return globalThis.btoa(bin.join(''))
+  }
 }
 
 type Builtin =
@@ -860,6 +1206,17 @@ export type Exact<P, I extends P> = P extends Builtin
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & {
       [K in Exclude<keyof I, KeysOfUnion<P>>]: never
     }
+
+function longToNumber(int64: { toString(): string }): number {
+  const num = globalThis.Number(int64.toString())
+  if (num > globalThis.Number.MAX_SAFE_INTEGER) {
+    throw new globalThis.Error('Value is larger than Number.MAX_SAFE_INTEGER')
+  }
+  if (num < globalThis.Number.MIN_SAFE_INTEGER) {
+    throw new globalThis.Error('Value is smaller than Number.MIN_SAFE_INTEGER')
+  }
+  return num
+}
 
 function isSet(value: any): boolean {
   return value !== null && value !== undefined

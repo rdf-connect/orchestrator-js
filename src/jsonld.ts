@@ -184,6 +184,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
       } catch (ex) {
         console.error('Failed at property', {
           clazz: property.clazz!.value,
+          found: Object.keys(others),
         })
         throw ex
       }

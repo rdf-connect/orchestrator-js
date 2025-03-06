@@ -1,6 +1,8 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import {
+  DataChunk,
+  Id,
   OrchestratorMessage,
   RunnerMessage,
   RunnerServer,
@@ -8,8 +10,20 @@ import {
 import { Runner } from './runner'
 import { getLoggerFor } from './logUtil'
 
+type Receiver = {
+  data: (chunk: DataChunk) => Promise<unknown>
+  close: () => Promise<unknown>
+}
+
+type OpenStream = {
+  done: DataChunk[]
+  receivers: Receiver[]
+}
+
 export class Server {
   protected logger = getLoggerFor([this])
+  protected streaMsgId = 0
+  protected msgStreams: { [id: number]: OpenStream } = {}
   server: RunnerServer
   readonly runners: {
     [label: string]: { part: Runner; promise: () => void }
@@ -38,6 +52,67 @@ export class Server {
         })
 
         runner.promise()
+      },
+      sendStreamMessage: async (
+        stream: grpc.ServerDuplexStream<DataChunk, Id>,
+      ) => {
+        const id = this.streaMsgId
+        this.streaMsgId += 1
+        this.logger.debug('Openin stream with id ' + id)
+
+        const obj: OpenStream = {
+          done: [],
+          receivers: [],
+        }
+        this.msgStreams[id] = obj
+
+        // Sending only message on the stream
+        await new Promise((res) => stream.write({ id: id }, res))
+
+        for await (const chunk of stream) {
+          const c: DataChunk = chunk
+          this.logger.debug('got chunk for stream ' + id)
+          obj.done.push(c)
+          for (const listener of obj.receivers) {
+            await listener.data(c)
+          }
+        }
+
+        let c = obj.receivers.pop()
+        while (c !== undefined) {
+          await c.close()
+          c = obj.receivers.pop()
+        }
+
+        this.logger.debug('data stream is finished, closing in 500ms ' + id)
+        setTimeout(() => {
+          this.logger.debug('closing data stream ' + id)
+          delete this.msgStreams[id]
+          for (const receiver of obj.receivers) {
+            receiver.close()
+          }
+        }, 500)
+      },
+      receiveStreamMessage: async (call) => {
+        const id = call.request.id
+        const obj = this.msgStreams[id]
+        const write = promisify(call.write.bind(call))
+        if (obj === undefined) {
+          this.logger.error('No open streams found for', id)
+          call.end()
+          return
+        } else {
+          this.logger.debug('Found open stream for id ' + id)
+          for (let i = 0; i < obj.done.length; i++) {
+            await write(obj.done[i])
+          }
+          obj.receivers.push({
+            close: async () => {
+              call.end()
+            },
+            data: write,
+          })
+        }
       },
     }
   }

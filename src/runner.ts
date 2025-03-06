@@ -4,6 +4,7 @@ import {
   Message,
   OrchestratorMessage,
   RunnerMessage,
+  StreamMessage,
 } from './generated/service'
 import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
@@ -85,6 +86,12 @@ export abstract class Runner {
     }
   }
 
+  async streamMessage(streamMsg: StreamMessage) {
+    if (this.handlesChannels.has(streamMsg.channel)) {
+      await this.sendMessage({ streamMsg })
+    }
+  }
+
   async close(close: Close) {
     await this.sendMessage({ close })
   }
@@ -93,6 +100,13 @@ export abstract class Runner {
     if (msg.msg) {
       this.logger.debug('Runner handle data msg to ', msg.msg.channel)
       await this.orchestrator.msg(msg.msg)
+    }
+    if (msg.streamMsg) {
+      this.logger.debug(
+        'Runner handle stream data msg to ',
+        msg.streamMsg.channel,
+      )
+      await this.orchestrator.streamMessage(msg.streamMsg)
     }
     if (msg.close) {
       this.logger.debug('Runner handle close msg to ', msg.close.channel)
@@ -192,7 +206,7 @@ export class CommandRunner extends Runner {
     const child = spawn(cmd, args)
 
     child.stdout.on('data', (data) => {
-      this.logger.info((<string>data.toString()).trim())
+      this.logger.info('From command ' + (<string>data.toString()).trim())
     })
 
     child.stderr.on('data', (data) => {

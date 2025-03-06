@@ -6,9 +6,7 @@ import "google/protobuf/empty.proto";
 
 message Error { string cause = 1; }
 
-message Identify {
-  string uri = 1;
-}
+message Identify { string uri = 1; }
 
 message Processor {
   /* The URI of the Processor. */
@@ -30,7 +28,12 @@ message Close { string channel = 1; }
 
 message Message {
   string channel = 1;
-  string data = 2;
+  bytes data = 2;
+}
+
+message StreamMessage {
+  Id id = 1;
+  string channel = 2;
 }
 
 // All possible messages that runners handle
@@ -40,6 +43,7 @@ message RunnerMessage {
     google.protobuf.Empty start = 2;
     Message msg = 3;
     Close close = 4;
+    StreamMessage streamMsg = 5;
   }
 }
 
@@ -49,15 +53,18 @@ message OrchestratorMessage {
     Message msg = 2;
     Close close = 3;
     Identify identify = 4;
+    StreamMessage streamMsg = 5;
   }
+}
+
+message Id { uint64 id = 1; }
+
+message DataChunk {
+  bytes data = 1;
 }
 
 service Runner {
   rpc connect(stream OrchestratorMessage) returns (stream RunnerMessage);
-  // rpc sendMessage(stream DataChunk) returns (google.protobuf.Empty)
-  // rpc receiveMessage(google.protobuf.Empty) returns (stream DataChunk)
+  rpc sendStreamMessage(stream DataChunk) returns (stream Id);
+  rpc receiveStreamMessage(Id) returns (stream DataChunk);
 }
-
-
-
-

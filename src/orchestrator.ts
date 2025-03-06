@@ -11,7 +11,12 @@ import { getLoggerFor, reevaluteLevels, setPipelineFile } from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
-import { Close, Message, RunnerService } from './generated/service'
+import {
+  Close,
+  Message,
+  RunnerService,
+  StreamMessage,
+} from './generated/service'
 import { Server } from './server'
 import { empty } from 'rdf-lens'
 
@@ -50,6 +55,9 @@ export class Orchestrator implements Callbacks {
     } else {
       this.definitions = definitions
     }
+    this.logger.info(
+      'Found definitions ' + JSON.stringify(Object.keys(this.definitions)),
+    )
     if (pipelineIsString(pipeline)) {
       this.pipeline = PipelineShape.execute({
         id: new NamedNode(pipeline),
@@ -87,6 +95,13 @@ export class Orchestrator implements Callbacks {
   async msg(msg: Message) {
     this.logger.debug('Got data message for channel ' + msg.channel)
     await Promise.all(this.pipeline.runners.map((runner) => runner.msg(msg)))
+  }
+
+  async streamMessage(msg: StreamMessage) {
+    this.logger.debug('Got data stream message for channel ' + msg.channel)
+    await Promise.all(
+      this.pipeline.runners.map((runner) => runner.streamMessage(msg)),
+    )
   }
 
   async startRunners(addr: string) {
