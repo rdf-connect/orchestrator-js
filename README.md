@@ -44,7 +44,6 @@ sequenceDiagram
         end
     end
 ```
-
 </details>
 
 <details>
@@ -66,10 +65,34 @@ sequenceDiagram
 
 </details>
 
-Streaming messages vs blob messages.
-Reader can have methods: asStreamReader or asBlobReader.
-Same with writers
+<detail>
+    <summary>Streaming message sequence diagram</summary>
 
-Can Kafka handle streaming body messages?
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P1 as Processor 1
+    participant R1 as Runner 1
+    participant O as Orchestrator
+    participant R2 as Runner 2
+    participant P2 as Processor 2
+    P1 -->> R1: Send streaming<br>message
+    critical Start stream message
+        R1 ->> O: rpc.sendStreamMessage<br>(bidirectional stream)
+        O -->> R1: sends generated ID<br>of stream message
+        R1 -->> O: announce StreamMessage<br>with ID over normal stream
 
-We need some metrics.
+        O -->> R2: announce StreamMessage<br>with ID over normal stream
+        R2 ->> O: rpc.receiveMessage with Id<br>starts receiving stream
+        R2 -->> P2: incoming stream message
+    end
+
+    loop Streams data
+        P1 -->> R1: Data chunks
+        R1 -->> O: Data chunks over stream
+        O -->> R2: Data chunks over stream
+        R2 -->>P2: Data chnuks
+    end
+```
+</detail>
+
