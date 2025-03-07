@@ -65,7 +65,7 @@ sequenceDiagram
 
 </details>
 
-<detail>
+<details>
     <summary>Streaming message sequence diagram</summary>
 
 ```mermaid
@@ -94,5 +94,5 @@ sequenceDiagram
         R2 -->>P2: Data chnuks
     end
 ```
-</detail>
+</details>
 
