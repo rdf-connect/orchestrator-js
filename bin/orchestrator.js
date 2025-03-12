@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { start } from '../lib/orchestrator.js'
 import path from 'path'
 

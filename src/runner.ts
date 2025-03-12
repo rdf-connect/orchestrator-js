@@ -57,9 +57,14 @@ export abstract class Runner {
   readonly processor_definition: URI
 
   readonly handlesChannels: Set<string> = new Set()
+
+  private endCb!: (v: unknown) => unknown
+  readonly endPromise: Promise<unknown>
+
   constructor(config: RunnerConfig) {
     Object.assign(this, config)
     this.logger = getLoggerFor([this.id.value, this], this.handles)
+    this.endPromise = new Promise((res) => (this.endCb = res))
   }
 
   abstract start(addr: string): Promise<void>
@@ -74,6 +79,9 @@ export abstract class Runner {
     for await (const msg of channels.receiveMessage) {
       await this.handleMessage(msg)
     }
+
+    this.logger.info('Runner ended')
+    this.endCb(undefined)
   }
 
   async startProcessors() {

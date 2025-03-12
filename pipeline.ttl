@@ -39,6 +39,11 @@ rdfc:ShaclValidator a rdfc:JsProcessor;
     sh:minCount 1;
     sh:maxCount 1;
     sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:class;
+    sh:name "clazz";
+    sh:maxCount 1;
+    sh:datatype xsd:string;
   ].
 
 [ ] a sh:NodeShape;

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "bin" : { "rdfc" : "./bin/orchestrator.js" },
   "scripts": {
     "build": "tspc && tsc-alias",
     "lint": "eslint . --ext .ts",

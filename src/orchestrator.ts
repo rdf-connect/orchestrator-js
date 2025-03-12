@@ -110,6 +110,10 @@ export class Orchestrator implements Callbacks {
     )
   }
 
+  async waitClose() {
+    await Promise.all(this.pipeline.runners.map((x) => x.endPromise))
+  }
+
   async startProcessors() {
     this.logger.debug(
       'Starting ' + this.pipeline.processors.length + ' processors',
@@ -171,6 +175,16 @@ export async function start(location: string) {
   orchestrator.setPipeline(quads, iri)
   await orchestrator.startRunners(addr)
   await orchestrator.startProcessors()
+
+  await orchestrator.waitClose()
+  grpcServer.tryShutdown((e) => {
+    if (e !== undefined) {
+      logger.error(e)
+      process.exit(1)
+    } else {
+      process.exit(0)
+    }
+  })
 }
 
 // Maps rdfc:Orchestrator to this orchestrator
