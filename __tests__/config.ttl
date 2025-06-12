@@ -9,17 +9,17 @@
 
 ex:runner1 a rdfc:TestRunner;
   rdfc:handles ex:Lang1;
-  rdfc:processor_definition <RunnerShape>.
+  rdfc:processor_definition ex:RunnerShape.
 
 ex:runner2 a rdfc:TestRunner;
   rdfc:handles ex:Lang2;
-  rdfc:processor_definition <RunnerShape>.
+  rdfc:processor_definition ex:RunnerShape.
 
 [ ] a sh:NodeShape;
-  sh:targetClass <RunnerShape>;
+  sh:targetClass ex:RunnerShape;
   sh:property [
+    sh:path rdfc:label;
     sh:name "label";
-    sh:property rdfc:label;
     sh:maxCount 1;
     sh:datatype xsd:string;
   ].

@@ -44,6 +44,7 @@ sequenceDiagram
         end
     end
 ```
+
 </details>
 
 <details>
@@ -94,5 +95,5 @@ sequenceDiagram
         R2 -->>P2: Data chnuks
     end
 ```
-</details>
 
+</details>

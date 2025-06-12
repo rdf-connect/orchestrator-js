@@ -25,6 +25,24 @@ rdfc:ShaclValidator a rdfc:JsProcessor;
   rdfc:command "node bin/runner.js";
   rdfc:processor_definition <JsProcessorShape>.
 
+
+<LocalJsRunner> a rdfc:Runner;
+  rdfc:instantiator rdfc:LocalInstantiator;
+  rdfc:handles rdfc:JsProcessor;
+  rdfc:command "node bin/runner.js";
+  rdfc:starts <echo>;
+  rdfc:processor_definition <JsProcessorShape>.
+
+<RemoteJsRunner> a rdfc:Runner;
+  rdfc:instantiator [
+    a rdfc:HttpEndpoint;
+    rdfc:url "http://myRemote:5000/";
+  ];
+  rdfc:handles rdfc:JsProcessor;
+  rdfc:command "node bin/runner.js";
+  rdfc:processor_definition <JsProcessorShape>.
+
+
 [ ] a sh:NodeShape;
   sh:targetClass <JsProcessorShape>;
   sh:property [
