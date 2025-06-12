@@ -56,8 +56,13 @@ describe('Setup orchestrator', async () => {
 
 <> owl:imports <__tests__/config.ttl>.
 <> a rdfc:Pipeline;
-  rdfc:processor <p1>, <p2>;
-  rdfc:runner ex:runner1, ex:runner2.
+    rdfc:consistsOf [
+        rdfc:instantiates ex:runner1;
+        rdfc:processor <p1>;
+    ], [
+        rdfc:instantiates ex:runner2;
+        rdfc:processor <p2>;
+    ].
 
 <p1> a ex:Proc1;
   rdfc:input ex:c1;
@@ -76,11 +81,12 @@ describe('Setup orchestrator', async () => {
 
     orchestrator.setPipeline(quads, iri)
     test('pipeline parsed', () => {
-        expect(orchestrator.pipeline.runners.length, 'found 2 runners').toBe(2)
-        expect(
-            orchestrator.pipeline.processors.length,
-            'found 2 processors',
-        ).toBe(2)
+        expect(orchestrator.pipeline.parts.length, 'found 2 runners').toBe(2)
+
+        const count = orchestrator.pipeline.parts
+            .flatMap((p) => p.processors.length)
+            .reduce((x, y) => x + y, 0)
+        expect(count, 'found 2 processors').toBe(2)
     })
 
     test('pipeline starts', async () => {
@@ -95,10 +101,9 @@ describe('Setup orchestrator', async () => {
         await prom
 
         const startingPromise = orchestrator.startProcessors()
-
-        orchestrator.pipeline.runners.forEach((r) => {
-            if (r instanceof TestRunner) {
-                r.mockStartProcessor()
+        orchestrator.pipeline.parts.forEach((r) => {
+            if (r.runner instanceof TestRunner) {
+                r.runner.mockStartProcessor()
             }
         })
 

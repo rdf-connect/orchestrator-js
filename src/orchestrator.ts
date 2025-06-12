@@ -1,12 +1,6 @@
 import * as grpc from '@grpc/grpc-js'
 import { NamedNode, Writer } from 'n3'
-import {
-    emptyPipeline,
-    modelShapes,
-    Pipeline,
-    PipelineShape,
-    Processor,
-} from './model'
+import { emptyPipeline, modelShapes, Pipeline, PipelineShape } from './model'
 import { getLoggerFor, reevaluteLevels, setPipelineFile } from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
@@ -68,52 +62,32 @@ export class Orchestrator implements Callbacks {
         }
     }
 
-    findRunner(proc: Processor) {
-        const runners = this.pipeline.runners.filter((x) =>
-            x.handles.some((handle) => handle === proc.type.runner_type),
-        )
-        if (runners.length !== 1) {
-            const error =
-                runners.length === 0
-                    ? `No viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type})`
-                    : `Too many viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type}) (found ${runners.map(
-                          (x) => x.id.value,
-                      )})`
-
-            this.logger.error(error)
-            throw error
-        }
-
-        return runners[0]
-    }
-
     async close(close: Close) {
         this.logger.debug('Got close message for channel ' + close.channel)
         await Promise.all(
-            this.pipeline.runners.map((inst) => inst.close(close)),
+            this.pipeline.parts.map((part) => part.runner.close(close)),
         )
     }
 
     async msg(msg: Message) {
         this.logger.debug('Got data message for channel ' + msg.channel)
         await Promise.all(
-            this.pipeline.runners.map((runner) => runner.msg(msg)),
+            this.pipeline.parts.map((part) => part.runner.msg(msg)),
         )
     }
 
     async streamMessage(msg: StreamMessage) {
         this.logger.debug('Got data stream message for channel ' + msg.channel)
         await Promise.all(
-            this.pipeline.runners.map((runner) => runner.streamMessage(msg)),
+            this.pipeline.parts.map((part) => part.runner.streamMessage(msg)),
         )
     }
 
     async startRunners(addr: string, pipeline: string) {
-        this.logger.debug(
-            'Starting ' + this.pipeline.runners.length + ' runners',
-        )
+        this.logger.debug('Starting ' + this.pipeline.parts.length + ' runners')
         await Promise.all(
-            Object.values(this.pipeline.runners).map(async (r) => {
+            Object.values(this.pipeline.parts).map(async (part) => {
+                const r = part.runner
                 const prom = this.server.expectRunner(r)
                 await r.start(addr)
                 await prom
@@ -123,27 +97,28 @@ export class Orchestrator implements Callbacks {
     }
 
     async waitClose() {
-        await Promise.all(this.pipeline.runners.map((x) => x.endPromise))
+        await Promise.all(this.pipeline.parts.map((x) => x.runner.endPromise))
     }
 
     async startProcessors() {
         this.logger.debug(
-            'Starting ' + this.pipeline.processors.length + ' processors',
+            'Starting ' +
+                this.pipeline.parts.map((x) => x.processors.length) +
+                ' processors',
         )
         const errors = []
 
-        for (const proc of this.pipeline.processors) {
-            try {
-                const runner = this.findRunner(proc)
-                this.logger.debug(
-                    'Adding processor ' +
-                        proc.id.value +
-                        ' to runner' +
-                        runner.id.value,
-                )
-                runner.addProcessor(proc, this.quads, this.definitions)
-            } catch (ex) {
-                errors.push(ex)
+        for (const part of this.pipeline.parts) {
+            const runner = part.runner
+            for (const procId of part.processors) {
+                try {
+                    this.logger.debug(
+                        `Adding processor ${procId.id.value} (${procId.type.value}) to runner ${runner.id.value}`,
+                    )
+                    runner.addProcessor(procId, this.quads, this.definitions)
+                } catch (ex) {
+                    errors.push(ex)
+                }
             }
         }
 
@@ -166,7 +141,9 @@ export class Orchestrator implements Callbacks {
         //     throw promiseErrors
         // }
 
-        await Promise.all(this.pipeline.runners.map((x) => x.startProcessors()))
+        await Promise.all(
+            this.pipeline.parts.map((x) => x.runner.startProcessors()),
+        )
     }
 }
 
@@ -191,7 +168,9 @@ export async function start(location: string) {
     const iri = 'file://' + location
     setPipelineFile(iri)
     const quads = await readQuads([iri])
+
     reevaluteLevels()
+    logger.debug('Setting pipeline')
     try {
         orchestrator.setPipeline(quads, iri)
     } catch (ex: unknown) {
@@ -204,6 +183,14 @@ export async function start(location: string) {
             process.exit(1)
         }
     }
+
+    for (const p of orchestrator.pipeline.parts) {
+        console.log(p.runner.id.value)
+        for (const pr of p.processors) {
+            console.log(pr)
+        }
+    }
+
     await orchestrator.startRunners(addr, new Writer().quadsToString(quads))
     await orchestrator.startProcessors()
 

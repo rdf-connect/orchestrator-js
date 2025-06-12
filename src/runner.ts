@@ -10,10 +10,9 @@ import {
 import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
 import { Quad, Term } from '@rdfjs/types'
-import { URI } from './model'
 import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
 import { Definitions } from './jsonld'
-import { Processor } from './model'
+import { SmallProc } from './model'
 import { jsonld_to_string, RDFC } from './util'
 import { getLoggerFor } from './logUtil'
 import { Logger } from 'winston'
@@ -40,8 +39,7 @@ export type Channels = {
 
 export type RunnerConfig = {
     id: Term
-    handles: URI[]
-    processor_definition: URI
+    handles: Term
     orchestrator: Orchestrator
 }
 
@@ -54,8 +52,7 @@ export abstract class Runner {
     protected orchestrator: Orchestrator
 
     readonly id: Term
-    readonly handles: URI[]
-    readonly processor_definition: URI
+    readonly handles: Term
 
     readonly handlesChannels: Set<string> = new Set()
 
@@ -64,7 +61,7 @@ export abstract class Runner {
 
     constructor(config: RunnerConfig) {
         Object.assign(this, config)
-        this.logger = getLoggerFor([this.id.value, this], this.handles)
+        this.logger = getLoggerFor([this.id.value, this])
         this.endPromise = new Promise((res) => (this.endCb = res))
     }
 
@@ -140,14 +137,14 @@ export abstract class Runner {
     // Tells the runner to start a processor with configuration
     // Returning a promise that resolves when the processor is initialized
     async addProcessor(
-        proc: Processor,
+        proc: SmallProc,
         quads: Quad[],
         discoveredShapes: Definitions,
     ): Promise<void> {
-        const shape = discoveredShapes[proc.type.id.value]
+        const shape = discoveredShapes[proc.type.value]
         if (!shape) {
             this.logger.error(
-                `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.id.value})`,
+                `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.value})`,
             )
             throw 'No shape definition found'
         }
@@ -173,17 +170,17 @@ export abstract class Runner {
 
         const args = jsonld_to_string(jsonld_document)
 
-        const processorShape = discoveredShapes[this.processor_definition]
+        const processorShape = discoveredShapes[this.handles.value]
         if (processorShape === undefined) {
             const error = new Error(
-                'Failed to find processor shape for ' +
-                    this.processor_definition,
+                'Failed to find processor shape property ' + this.handles.value,
             )
             this.logger.error(error.message)
             throw error
         }
+
         const document = processorShape.addToDocument(
-            proc.type.id,
+            proc.type,
             quads,
             discoveredShapes,
         )
@@ -191,11 +188,12 @@ export abstract class Runner {
         const processorIsInit = new Promise(
             (res) => (this.processors[proc.id.value] = () => res(undefined)),
         )
+        const jsonldDoc = jsonld_to_string(document)
 
         await this.sendMessage({
             proc: {
                 uri: proc.id.value,
-                config: jsonld_to_string(document),
+                config: jsonldDoc,
                 arguments: args,
             },
         })
@@ -206,10 +204,10 @@ export abstract class Runner {
 
 export class CommandRunner extends Runner {
     private command: string
-    constructor(command: string, config: RunnerConfig) {
+    constructor(config: RunnerConfig & { command: string }) {
         super(config)
+        this.command = config.command
         this.logger.debug('Built a command runner!')
-        this.command = command
     }
 
     async start(addr: string) {
@@ -259,7 +257,7 @@ export class TestRunner extends Runner {
     }
 
     async addProcessor(
-        proc: Processor,
+        proc: SmallProc,
         quads: Quad[],
         discoveredShapes: Definitions,
     ): Promise<void> {

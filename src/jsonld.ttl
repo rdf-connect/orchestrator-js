@@ -66,7 +66,10 @@
   sh:property [
     sh:name "target";
     sh:path sh:targetClass;
-    sh:minCount 1;
+    sh:datatype xsd:iri;
+  ], [
+    sh:name "targetSubjects";
+    sh:path sh:targetSubjectsOf;
     sh:datatype xsd:iri;
   ], [
     sh:name "id";

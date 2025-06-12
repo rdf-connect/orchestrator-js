@@ -1,3 +1,4 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
 @prefix ex: <http://example.org/>.
 @prefix owl: <http://www.w3.org/2002/07/owl#>.
 @prefix foaf: <http://xmlns.com/foaf/0.1/>.
@@ -7,16 +8,16 @@
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 @prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
 
+ex:lang1 rdfs:subPropertyOf rdfs:subClassOf.
+ex:lang2 rdfs:subPropertyOf rdfs:subClassOf.
 ex:runner1 a rdfc:TestRunner;
-  rdfc:handles ex:Lang1;
-  rdfc:processor_definition ex:RunnerShape.
+  rdfc:handlesSubjectsOf ex:lang1.
 
 ex:runner2 a rdfc:TestRunner;
-  rdfc:handles ex:Lang2;
-  rdfc:processor_definition ex:RunnerShape.
+  rdfc:handlesSubjectsOf ex:lang2.
 
 [ ] a sh:NodeShape;
-  sh:targetClass ex:RunnerShape;
+  sh:targetSubjectsOf ex:lang1, ex:lang2;
   sh:property [
     sh:path rdfc:label;
     sh:name "label";
@@ -24,10 +25,10 @@ ex:runner2 a rdfc:TestRunner;
     sh:datatype xsd:string;
   ].
 
-ex:Proc1 a ex:Lang1;
+ex:Proc1 ex:lang1 rdfc:Processor;
   rdfc:label "First processor Definition".
 
-ex:Proc2 a ex:Lang2;
+ex:Proc2 ex:lang2 rdfc:Processor;
   rdfc:label "Second processor Definition".
 
 [ ] a sh:NodeShape;
