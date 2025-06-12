@@ -94,14 +94,10 @@ describe('Setup orchestrator', async () => {
         ])
         await prom
 
-        console.log("Pipeline")
-        console.log(orchestrator.pipeline);
         const startingPromise = orchestrator.startProcessors()
-
 
         orchestrator.pipeline.runners.forEach((r) => {
             if (r instanceof TestRunner) {
-                console.log("Found testrunner", r.id.value);
                 r.mockStartProcessor()
             }
         })

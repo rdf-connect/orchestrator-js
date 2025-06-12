@@ -7,7 +7,7 @@ import { readFile } from 'fs/promises'
 import { getLoggerFor, prefixFound } from './logUtil'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
-const logger = getLoggerFor(["util.ts"])
+const logger = getLoggerFor(['util.ts'])
 
 export const RDFC = createNamespace(
     'https://w3id.org/rdf-connect/ontology#',
@@ -69,7 +69,7 @@ export async function readQuads(
     while (current !== undefined) {
         if (!done.has(current)) {
             done.add(current)
-            logger.debug("Expanding " + current);
+            logger.debug('Expanding ' + current)
 
             const url = new URL(current)
             if (url.protocol !== 'file:') {

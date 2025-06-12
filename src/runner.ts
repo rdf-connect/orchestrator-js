@@ -49,7 +49,7 @@ export abstract class Runner {
     protected logger: Logger
 
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => { }
+        async () => {}
     protected processors: { [id: string]: () => void } = {}
     protected orchestrator: Orchestrator
 
@@ -177,7 +177,7 @@ export abstract class Runner {
         if (processorShape === undefined) {
             const error = new Error(
                 'Failed to find processor shape for ' +
-                this.processor_definition,
+                    this.processor_definition,
             )
             this.logger.error(error.message)
             throw error
@@ -249,7 +249,9 @@ export class TestRunner extends Runner {
     }
 
     async mockStartProcessor(): Promise<void> {
-        this.logger.info('Mock start processors ' + JSON.stringify(this.startedProcessors))
+        this.logger.info(
+            'Mock start processors ' + JSON.stringify(this.startedProcessors),
+        )
         for (const uri of this.startedProcessors) {
             this.logger.info('Start processors ' + uri)
             await this.handleMessage({ init: { uri } })

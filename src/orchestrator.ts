@@ -56,7 +56,7 @@ export class Orchestrator implements Callbacks {
         }
         this.logger.info(
             'Found definitions ' +
-            JSON.stringify(Object.keys(this.definitions)),
+                JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
             this.pipeline = PipelineShape.execute({
@@ -77,8 +77,8 @@ export class Orchestrator implements Callbacks {
                 runners.length === 0
                     ? `No viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type})`
                     : `Too many viable runners found for processor ${proc.id.value} (expects runner for ${proc.type.runner_type}) (found ${runners.map(
-                        (x) => x.id.value,
-                    )})`
+                          (x) => x.id.value,
+                      )})`
 
             this.logger.error(error)
             throw error
@@ -135,7 +135,12 @@ export class Orchestrator implements Callbacks {
         for (const proc of this.pipeline.processors) {
             try {
                 const runner = this.findRunner(proc)
-                this.logger.debug("Adding processor " + proc.id.value + " to runner" + runner.id.value)
+                this.logger.debug(
+                    'Adding processor ' +
+                        proc.id.value +
+                        ' to runner' +
+                        runner.id.value,
+                )
                 runner.addProcessor(proc, this.quads, this.definitions)
             } catch (ex) {
                 errors.push(ex)
