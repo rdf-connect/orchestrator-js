@@ -13,71 +13,49 @@ _:id sh:path ( );
 [ ] a sh:NodeShape;
   sh:targetClass <Pipeline>;
   sh:property _:id, [
-    sh:path rdfc:dependency;
-    sh:name "dependencies";
-    sh:datatype xsd:string;
+    sh:path rdfc:consistsOf;
+    sh:name "parts";
+    sh:class <PipelinePart>;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass <PipelinePart>;
+  sh:property [
+    sh:path rdfc:instantiates;
+    sh:name "runner";
+    sh:class rdfl:TypedExtract;
+    sh:maxCount 1;
+    sh:minCount 1;
   ], [
     sh:path rdfc:processor;
     sh:name "processors";
-    sh:class <Processor>;
-  ], [
-    sh:path rdfc:runner;
-    sh:name "runners";
-    sh:class rdfl:TypedExtract;
+    sh:class <SmallProc>;
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:Reader.
-
-[ ] a sh:NodeShape;
-  sh:targetClass rdfc:Writer.
-  # sh:property [
-  #   sh:path ( );
-  #   sh:name "uri";
-  #   sh:datatype xsd:any;
-  #   sh:maxCount 1;
-  #   sh:minCount 1;
-  # ].
-
-[ ] a sh:NodeShape;
-  sh:targetClass rdfc:TestRunner;
-  sh:property [
-    sh:path ( );
-    sh:name "config";
-    sh:class <RunnerConfig>;
-    sh:maxCount 1;
+  sh:targetClass <SmallProc>;
+  sh:property _:id, [
+    sh:path rdf:type;
+    sh:name "type";
+    sh:datatype xsd:iri;
     sh:minCount 1;
+    sh:maxCount 1;
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:CommandRunner;
-  sh:property [
-    sh:path ( );
-    sh:name "config";
-    sh:class <RunnerConfig>;
-    sh:maxCount 1;
+  sh:targetClass rdfc:Runner;
+  sh:property _:id, [
+    sh:name "handles";
+    sh:path rdfc:handlesSubjectsOf;
+    sh:datatype xsd:iri;
     sh:minCount 1;
+    sh:maxCount 1;
   ], [
     sh:path rdfc:command;
     sh:name "command";
     sh:datatype xsd:string;
     sh:maxCount 1;
     sh:minCount 1;
-  ].
-
-[ ] a sh:NodeShape;
-  sh:targetClass <RunnerConfig>;
-  sh:property _:id, [
-    sh:path rdfc:handles;
-    sh:name "handles";
-    sh:minCount 1;
-    sh:datatype xsd:string;
-  ], [
-    sh:path rdfc:processor_definition;
-    sh:name "processor_definition";
-    sh:minCount 1;
-    sh:maxCount 1;
-    sh:datatype xsd:string;
   ], [
     sh:path ( );
     sh:name "orchestrator";
@@ -87,22 +65,24 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass <Processor>;
+  sh:targetClass rdfc:TestRunner;
   sh:property _:id, [
-    sh:path rdf:type;
-    sh:name "type";
+    sh:name "handles";
+    sh:path rdfc:handlesSubjectsOf;
+    sh:datatype xsd:iri;
     sh:minCount 1;
     sh:maxCount 1;
-    sh:class <ProcessorType>;
+  ], [
+    sh:path ( );
+    sh:name "orchestrator";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Orchestrator;
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass <ProcessorType>;
-  sh:property _:id, [
-    sh:path rdf:type;
-    sh:name "runner_type";
-    sh:minCount 1;
-    sh:maxCount 1;
-    sh:datatype xsd:string;
-  ].
+  sh:targetClass rdfc:Reader.
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:Writer.
 
