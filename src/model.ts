@@ -8,13 +8,18 @@ import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { Term } from '@rdfjs/types'
 import { NamedNode, Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
-import { CommandRunner, Runner, RunnerConfig, TestRunner } from './runner'
+import {
+    CommandInstantiator,
+    Instantiator,
+    InstantiatorConfig,
+    TestInstantiator,
+} from './instantiator'
 
 /**
  * Represents a complete processing pipeline configuration.
  * @typedef {Object} Pipeline
  * @property {Term} id - Unique identifier for the pipeline
- * @property {Part[]} parts - Array of pipeline parts (runners with their processors)
+ * @property {Part[]} parts - Array of pipeline parts (instantiators with their processors)
  */
 export type Pipeline = {
     id: Term
@@ -24,11 +29,11 @@ export type Pipeline = {
 /**
  * Represents a part of the pipeline containing a runner and its processors.
  * @typedef {Object} Part
- * @property {Runner} runner - The runner responsible for executing processors
+ * @property {Instantiator} instantiator - The instantiator responsible for starting the runner and executing processors
  * @property {SmallProc[]} processors - Array of processors to be executed by the runner
  */
 export type Part = {
-    runner: Runner
+    instantiator: Instantiator
     processors: SmallProc[]
 }
 
@@ -68,17 +73,18 @@ const processor = $INLINE_FILE('./model.ttl')
 export const modelQuads = new Parser().parse(processor)
 
 /**
- * Extracted shapes from the RDF model with custom constructors for different runner types.
+ * Extracted shapes from the RDF model with custom constructors for different instnatiator types.
  * @type {Object}
  * @property {Function} 'https://w3id.org/rdf-connect/ontology#Runner' - Constructor for CommandRunner
  * @property {Function} 'https://w3id.org/rdf-connect/ontology#TestRunner' - Constructor for TestRunner
  */
 export const modelShapes = extractShapes(modelQuads, {
     'https://w3id.org/rdf-connect/ontology#Runner': (
-        inp: RunnerConfig & { command: string },
-    ) => new CommandRunner(inp),
-    'https://w3id.org/rdf-connect/ontology#TestRunner': (inp: RunnerConfig) =>
-        new TestRunner(inp),
+        inp: InstantiatorConfig & { command: string },
+    ) => new CommandInstantiator(inp),
+    'https://w3id.org/rdf-connect/ontology#TestRunner': (
+        inp: InstantiatorConfig,
+    ) => new TestInstantiator(inp),
 })
 
 /**

@@ -22,7 +22,7 @@ _:id sh:path ( );
   sh:targetClass <PipelinePart>;
   sh:property [
     sh:path rdfc:instantiates;
-    sh:name "runner";
+    sh:name "instantiator";
     sh:class rdfl:TypedExtract;
     sh:maxCount 1;
     sh:minCount 1;

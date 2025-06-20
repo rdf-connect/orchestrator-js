@@ -1,18 +1,23 @@
 import { describe, expect, test } from 'vitest'
 import { Server } from '../lib/server'
-import { Channels, Runner, TestRunner } from '../lib/runner'
+import { Channels } from '../lib/runner'
 import { createAsyncIterable, expandQuads } from '../lib/util'
-import { OrchestratorMessage, RunnerMessage } from '../lib/generated/service'
-import { modelShapes, Orchestrator } from '../lib'
+import { OrchestratorMessage, RunnerMessage } from '@rdfc/proto'
+import {
+    Instantiator,
+    modelShapes,
+    Orchestrator,
+    TestInstantiator,
+} from '../lib'
 import path from 'path'
 import { Parser } from 'n3'
 import { Cont, empty } from 'rdf-lens'
 
 const encoder = new TextEncoder()
 class TestServer extends Server {
-    expectRunner(runner: Runner): Promise<void> {
+    expectInstantiator(runner: Instantiator): Promise<void> {
         this.logger.info('Expecting runner')
-        return super.expectRunner(runner)
+        return super.expectInstantiator(runner)
     }
     connectRunners(): {
         [runnerId: string]: {
@@ -21,7 +26,7 @@ class TestServer extends Server {
         }
     } {
         const out = {}
-        for (const runner of Object.values(this.runners)) {
+        for (const runner of Object.values(this.instantiators)) {
             const msgs: RunnerMessage[] = []
             const rs = createAsyncIterable<OrchestratorMessage>()
             const send = (msg: OrchestratorMessage) => {
@@ -90,7 +95,7 @@ describe('Setup orchestrator', async () => {
     })
 
     test('pipeline starts', async () => {
-        const prom = orchestrator.startRunners('', '')
+        const prom = orchestrator.startInstantiators('', '')
         await new Promise((res) => setTimeout(res, 200))
         const runnerDict = server.connectRunners()
 
@@ -102,8 +107,8 @@ describe('Setup orchestrator', async () => {
 
         const startingPromise = orchestrator.startProcessors()
         orchestrator.pipeline.parts.forEach((r) => {
-            if (r.runner instanceof TestRunner) {
-                r.runner.mockStartProcessor()
+            if (r.instantiator instanceof TestInstantiator) {
+                r.instantiator.mockStartProcessor()
             }
         })
 

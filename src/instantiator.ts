@@ -1,7 +1,7 @@
 /**
- * @module runner
- * @description Implements the runner functionality for executing processing tasks.
- * Defines the base Runner class and specific implementations like CommandRunner and TestRunner.
+ * @module instantiator
+ * @description Implements the instantiator functionality for managing runner instances.
+ * Defines the base Instantiator class and specific implementations like CommandInstantiator and TestInstantiator.
  */
 
 import { parse } from 'shell-quote'
@@ -55,40 +55,40 @@ export type Channels = {
 }
 
 /**
- * Configuration for initializing a Runner.
- * @typedef {Object} RunnerConfig
- * @property {Term} id - Unique identifier for the runner
+ * Configuration for initializing an Instantiator.
+ * @typedef {Object} InstantiatorConfig
+ * @property {Term} id - Unique identifier for the instantiator
  * @property {Term} handles - The type of processors this runner can handle
  * @property {Orchestrator} orchestrator - Reference to the parent orchestrator
  */
-export type RunnerConfig = {
+export type InstantiatorConfig = {
     id: Term
     handles: Term
     orchestrator: Orchestrator
 }
 
 /**
- * Abstract base class for all runner implementations.
- * Handles communication with the orchestrator and manages processor lifecycle.
+ * Abstract base class for all instantiator implementations.
+ * Handles communication with the orchestrator and manage the runner instance and their processors.
  */
-export abstract class Runner {
-    /** Logger instance for this runner */
+export abstract class Instantiator {
+    /** Logger instance for the runner */
     protected logger: Logger
 
     /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
         async () => {}
-        
+
     /** Map of processor IDs to their cleanup functions */
     protected processors: { [id: string]: () => void } = {}
-    
+
     /** Reference to the parent orchestrator */
     protected orchestrator: Orchestrator
 
-    /** Unique identifier for this runner */
+    /** Unique identifier for this instantiator */
     readonly id: Term
-    
-    /** The type of processors this runner can handle */
+
+    /** The type of processors this instantiator can handle */
     readonly handles: Term
 
     /** Set of channel IRIs this runner is currently handling */
@@ -96,23 +96,23 @@ export abstract class Runner {
 
     /** Callback for when the runner ends */
     private endCb!: (v: unknown) => unknown
-    
+
     /** Promise that resolves when the runner ends */
     readonly endPromise: Promise<unknown>
 
     /**
-     * Creates a new Runner instance.
-     * @param {RunnerConfig} config - Configuration for the runner
+     * Creates a new Instantiator instance.
+     * @param {InstantiatorConfig} config - Configuration for the instantiator
      */
-    constructor(config: RunnerConfig) {
+    constructor(config: InstantiatorConfig) {
         Object.assign(this, config)
         this.logger = getLoggerFor([this.id.value, this])
         this.endPromise = new Promise((res) => (this.endCb = res))
     }
 
     /**
-     * Abstract method that must be implemented by subclasses to start the runner.
-     * @param {string} addr - The address to start the runner on
+     * Abstract method that must be implemented by subclasses to actually start the runner.
+     * @param {string} addr - The address that points back to the orchestrator
      * @returns {Promise<void>}
      */
     abstract start(addr: string): Promise<void>
@@ -120,7 +120,7 @@ export abstract class Runner {
     /**
      * Sets up bidirectional communication channels between the runner and orchestrator.
      * Routes incoming messages to the appropriate handlers and manages the message loop.
-     * 
+     *
      * @param {Channels} channels - Communication channels for message passing
      * @returns {Promise<void>}
      */
@@ -219,7 +219,7 @@ export abstract class Runner {
     /**
      * Instructs the runner to start a new processor with the given configuration.
      * The method resolves when the processor is fully initialized.
-     * 
+     *
      * @param {SmallProc} proc - The processor to start
      * @param {Quad[]} quads - RDF quads containing processor configuration
      * @param {Definitions} discoveredShapes - Available shape definitions
@@ -293,18 +293,18 @@ export abstract class Runner {
 }
 
 /**
- * A Runner implementation that starts a runner from an external command.
- * Manages the lifecycle of external processor processes.
+ * An Instantiator implementation that starts a runner from an external command.
+ * Manages the lifecycle of external runner processes.
  */
-export class CommandRunner extends Runner {
-    /** The command to execute for this runner */
+export class CommandInstantiator extends Instantiator {
+    /** The command that starts this runner */
     private command: string
-    
+
     /**
-     * Creates a new CommandRunner instance.
-     * @param {RunnerConfig & { command: string }} config - Runner configuration including the command to execute
+     * Creates a new CommandInstantiator instance.
+     * @param {InstantiatorConfig & { command: string }} config - Instantiator configuration including the command to execute
      */
-    constructor(config: RunnerConfig & { command: string }) {
+    constructor(config: InstantiatorConfig & { command: string }) {
         super(config)
         this.command = config.command
         this.logger.debug('Built a command runner!')
@@ -313,7 +313,7 @@ export class CommandRunner extends Runner {
     /**
      * Starts the command runner by executing the configured command.
      * Sets up stdout/stderr handlers and manages the child process.
-     * 
+     *
      * @param {string} addr - The address to connect to
      * @returns {Promise<void>}
      */
@@ -341,20 +341,20 @@ export class CommandRunner extends Runner {
 }
 
 /**
- * A test implementation of the Runner interface for testing purposes.
- * Simulates runner behavior without executing actual processors.
+ * A test implementation of the Instantiator interface for testing purposes.
+ * Simulates runner instantiation without executing actual processes.
  */
-export class TestRunner extends Runner {
+export class TestInstantiator extends Instantiator {
     /** List of processor URIs that have been started */
     private startedProcessors: string[] = []
-    
+
     /**
-     * Creates a new TestRunner instance.
-     * @param {RunnerConfig} config - Runner configuration
+     * Creates a new TestInstantiator instance.
+     * @param {InstantiatorConfig} config - Instantiator configuration
      */
-    constructor(config: RunnerConfig) {
+    constructor(config: InstantiatorConfig) {
         super(config)
-        this.logger.info('Built testrunner')
+        this.logger.info('Built test instantiator')
     }
 
     /**
@@ -386,12 +386,12 @@ export class TestRunner extends Runner {
     /**
      * Adds a processor to this test runner and tracks it in the started processors list.
      * Overrides the parent class method to add test-specific behavior.
-     * 
+     *
      * @param {SmallProc} proc - The processor to add
      * @param {Quad[]} quads - RDF quads containing processor configuration
      * @param {Definitions} discoveredShapes - Available shape definitions
      * @returns {Promise<void>} Resolves when the processor is added
-     * 
+     *
      * Process Flow:
      * 1. Tracks the processor ID in startedProcessors for test verification
      * 2. Delegates to parent class implementation for actual processor setup

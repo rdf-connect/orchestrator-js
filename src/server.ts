@@ -14,7 +14,7 @@ import {
     RunnerMessage,
     RunnerServer,
 } from '@rdfc/proto'
-import { Runner } from './runner'
+import { Instantiator } from './instantiator'
 import { getLoggerFor } from './logUtil'
 
 /**
@@ -46,26 +46,26 @@ type OpenStream = {
 export class Server {
     /** Logger instance for the server */
     protected logger = getLoggerFor([this])
-    
+
     /** Counter for generating unique stream message IDs */
     protected streaMsgId = 0
-    
+
     /** Map of active message streams */
     protected msgStreams: { [id: number]: OpenStream } = {}
-    
+
     /** gRPC server instance */
     server: RunnerServer
-    
+
     /**
      * Registry of all connected runners and their associated promises.
-     * 
+     *
      * @type {Object.<string, {part: Runner, promise: () => void}>}
      * @property {Object} [runnerId] - Each key is a unique runner identifier (URI)
      * @property {Runner} runnerId.part - The Runner instance handling the connection
      * @property {() => void} runnerId.promise - Resolver function for the connection promise
      */
-    readonly runners: {
-        [label: string]: { part: Runner; promise: () => void }
+    readonly instantiators: {
+        [label: string]: { part: Instantiator; promise: () => void }
     } = {}
 
     /**
@@ -80,10 +80,10 @@ export class Server {
         this.server = {
             /**
              * Handles new runner connections.
-             * 
+             *
              * @param {grpc.ServerDuplexStream<OrchestratorMessage, RunnerMessage>} stream - Bidirectional stream for communication
              * @throws {Error} If the first message is not an identify message
-             * 
+             *
              * Process Flow:
              * 1. Waits for the first message which must be an 'identify' message
              * 2. Sets up the communication channel with the runner
@@ -109,7 +109,7 @@ export class Server {
                 this.logger.debug('Got identify message')
 
                 const write = promisify(stream.write.bind(stream))
-                const runner = this.runners[msg.identify.uri]
+                const runner = this.instantiators[msg.identify.uri]
 
                 runner.part.setChannel({
                     sendMessage: <(msg: RunnerMessage) => Promise<void>>write,
@@ -120,9 +120,9 @@ export class Server {
             },
             /**
              * Handles incoming data streams from runners.
-             * 
+             *
              * @param {grpc.ServerDuplexStream<DataChunk, Id>} stream - Bidirectional stream for data transfer
-             * 
+             *
              * Process Flow:
              * 1. Creates a new stream with a unique ID
              * 2. Sets up storage for stream data and receivers
@@ -173,9 +173,9 @@ export class Server {
             },
             /**
              * Handles outgoing data streams to runners.
-             * 
+             *
              * @param {grpc.ServerDuplexStream<Id, DataChunk>} call - Bidirectional stream call
-             * 
+             *
              * Process Flow:
              * 1. Looks up the stream by ID
              * 2. Sends any buffered data to the new receiver
@@ -205,9 +205,9 @@ export class Server {
             },
             /**
              * Processes log messages from runners.
-             * 
+             *
              * @param {grpc.ServerReadableStream<LogMessage>} call - Stream of log messages
-             * 
+             *
              * Process Flow:
              * 1. Iterates through incoming log messages
              * 2. Routes each message to the appropriate logger
@@ -223,9 +223,9 @@ export class Server {
     }
 
     /// Tell the server to expect a runner to connect, returning a promise that resolves when this happens
-    expectRunner(runner: Runner): Promise<void> {
+    expectRunner(runner: Instantiator): Promise<void> {
         return new Promise((res) => {
-            this.runners[runner.id.value] = {
+            this.instantiators[runner.id.value] = {
                 part: runner,
                 promise: () => res(),
             }

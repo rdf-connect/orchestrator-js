@@ -28,7 +28,7 @@ export type Callbacks = {
      * @returns {Promise<void>}
      */
     msg: (msg: Message) => Promise<void>
-    
+
     /**
      * Handles connection closures.
      * @param {Close} close - Close event details
@@ -59,10 +59,10 @@ export class Orchestrator implements Callbacks {
 
     /** Current pipeline configuration */
     pipeline: Pipeline = emptyPipeline
-    
+
     /** RDF quads representing the current pipeline */
     quads: Quad[] = []
-    
+
     /** Processor definitions parsed from the pipeline */
     definitions: Definitions = {}
 
@@ -81,7 +81,7 @@ export class Orchestrator implements Callbacks {
      * @returns {void}
      */
     setPipeline(quads: Quad[], uri: string): void
-    
+
     /**
      * Sets the pipeline configuration with provided pipeline and definitions.
      * @param {Quad[]} quads - RDF quads representing the pipeline
@@ -94,7 +94,7 @@ export class Orchestrator implements Callbacks {
         pipeline: Pipeline,
         definitions: Definitions,
     ): void
-    
+
     /**
      * Implementation of setPipeline that handles both overloads.
      * @private
@@ -127,61 +127,63 @@ export class Orchestrator implements Callbacks {
     /**
      * Handles connection closure for a specific channel.
      * Propagates the close event to all runners in the pipeline.
-     * 
+     *
      * @param {Close} close - Close event details including the channel identifier
      * @returns {Promise<void>}
      */
     async close(close: Close) {
         this.logger.debug('Got close message for channel ' + close.channel)
         await Promise.all(
-            this.pipeline.parts.map((part) => part.runner.close(close)),
+            this.pipeline.parts.map((part) => part.instantiator.close(close)),
         )
     }
 
     /**
      * Processes an incoming message by forwarding it to all runners in the pipeline.
-     * 
+     *
      * @param {Message} msg - The message to process
      * @returns {Promise<void>}
      */
     async msg(msg: Message) {
         this.logger.debug('Got data message for channel ' + msg.channel)
         await Promise.all(
-            this.pipeline.parts.map((part) => part.runner.msg(msg)),
+            this.pipeline.parts.map((part) => part.instantiator.msg(msg)),
         )
     }
 
     /**
      * Handles streaming messages by forwarding them to all runners in the pipeline.
-     * 
+     *
      * @param {StreamMessage} msg - The stream message to process
      * @returns {Promise<void>}
      */
     async streamMessage(msg: StreamMessage) {
         this.logger.debug('Got data stream message for channel ' + msg.channel)
         await Promise.all(
-            this.pipeline.parts.map((part) => part.runner.streamMessage(msg)),
+            this.pipeline.parts.map((part) =>
+                part.instantiator.streamMessage(msg),
+            ),
         )
     }
 
     /**
      * Initializes and starts all runners in the pipeline.
-     * 
+     *
      * @param {string} addr - The address to start the runners on
      * @param {string} pipeline - The pipeline configuration to send to runners
      * @returns {Promise<void>}
-     * 
+     *
      * Process Flow:
      * For each part in the pipeline:
      *    a. Registers the runner with the server
      *    b. Starts the runner with the provided address
      *    c. Sends the pipeline configuration to the runner
      */
-    async startRunners(addr: string, pipeline: string) {
+    async startInstantiators(addr: string, pipeline: string) {
         this.logger.debug('Starting ' + this.pipeline.parts.length + ' runners')
         await Promise.all(
             Object.values(this.pipeline.parts).map(async (part) => {
-                const r = part.runner
+                const r = part.instantiator
                 const prom = this.server.expectRunner(r)
                 await r.start(addr)
                 await prom
@@ -192,20 +194,22 @@ export class Orchestrator implements Callbacks {
 
     /**
      * Waits for all runners in the pipeline to complete their execution.
-     * 
+     *
      * @returns {Promise<void>}
      * @throws {Error} If any runner ends with an error
      */
     async waitClose() {
-        await Promise.all(this.pipeline.parts.map((x) => x.runner.endPromise))
+        await Promise.all(
+            this.pipeline.parts.map((x) => x.instantiator.endPromise),
+        )
     }
 
     /**
      * Initializes and starts all processors in the pipeline.
-     * 
+     *
      * @returns {Promise<void>}
      * @throws {Array<Error>} If any processor fails to start
-     * 
+     *
      * Process Flow:
      * 1. For each part in the pipeline:
      *    a. For each processor in the part:
@@ -224,7 +228,7 @@ export class Orchestrator implements Callbacks {
         const errors = []
 
         for (const part of this.pipeline.parts) {
-            const runner = part.runner
+            const runner = part.instantiator
             for (const procId of part.processors) {
                 try {
                     this.logger.debug(
@@ -247,7 +251,7 @@ export class Orchestrator implements Callbacks {
         }
 
         await Promise.all(
-            this.pipeline.parts.map((x) => x.runner.startProcessors()),
+            this.pipeline.parts.map((x) => x.instantiator.startProcessors()),
         )
     }
 }
@@ -258,10 +262,10 @@ export class Orchestrator implements Callbacks {
  *
  * @param {string} location - Filesystem path to the pipeline configuration file
  * @returns {Promise<void>}
- * 
+ *
  * @throws {LensError} If there's an error processing the pipeline configuration
  * @throws {Error} For other runtime errors during startup
- * 
+ *
  * Process Flow:
  * 1. Initializes gRPC server and orchestrator instance
  * 2. Binds the gRPC server to the specified port (default: 50051)
@@ -309,13 +313,15 @@ export async function start(location: string) {
     }
 
     for (const p of orchestrator.pipeline.parts) {
-        console.log(p.runner.id.value)
         for (const pr of p.processors) {
             console.log(pr)
         }
     }
 
-    await orchestrator.startRunners(addr, new Writer().quadsToString(quads))
+    await orchestrator.startInstantiators(
+        addr,
+        new Writer().quadsToString(quads),
+    )
     await orchestrator.startProcessors()
 
     await orchestrator.waitClose()

@@ -162,7 +162,7 @@ export abstract class Definition {
     /**
      * Creates a new JSON-LD document structure for the given RDF term.
      * Handles different term types (Literals, URIs, Blank Nodes) appropriately.
-     * 
+     *
      * @protected
      * @param {Term} id - The RDF term to create a document for
      * @param {boolean} [isNest=false] - If true, creates a nested document without @id
@@ -423,12 +423,12 @@ export type Definitions = { [id: string]: Definition }
 /**
  * Parses RDF quads into processor definitions.
  * Extracts and processes processor definitions from RDF data.
- * 
+ *
  * The function automatically includes the following built-in definitions:
  * - CBD (Concise Bounded Description): Extracts a subgraph about a resource
  * - Path: Handles RDF path expressions
  * - TypedExtract: Extracts typed literals from RDF data
- * 
+ *
  * @param {Quad[]} quads - RDF quads to parse
  * @returns {Definitions} Processed definitions including both parsed and built-in definitions
  * @throws {Error} If no processor definitions are found in the input quads

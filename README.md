@@ -7,15 +7,15 @@ A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-  - [CLI](#cli)
-  - [Programmatic API](#programmatic-api)
+    - [CLI](#cli)
+    - [Programmatic API](#programmatic-api)
 - [Configuration](#configuration)
 - [Architecture](#architecture)
 - [Development](#development)
-  - [Prerequisites](#prerequisites)
-  - [Building](#building)
-  - [Testing](#testing)
-  - [Linting & Formatting](#linting--formatting)
+    - [Prerequisites](#prerequisites)
+    - [Building](#building)
+    - [Testing](#testing)
+    - [Linting & Formatting](#linting--formatting)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -61,15 +61,15 @@ rdfc path/to/your/pipeline.ttl
 ### Programmatic API
 
 ```typescript
-import { Orchestrator } from 'orchestrator';
+import { Orchestrator } from 'orchestrator'
 
 // Initialize with your configuration
 const orchestrator = new Orchestrator({
-  // Configuration options
-});
+    // Configuration options
+})
 
 // Start the orchestrator
-await orchestrator.start();
+await orchestrator.start()
 ```
 
 ## Configuration
@@ -162,23 +162,22 @@ The main class that manages the pipeline execution.
 
 ```typescript
 interface OrchestratorOptions {
-  configPath?: string;      // Path to RDF configuration
-  logger?: Logger;          // Custom logger instance
-  // Additional options...
+    configPath?: string // Path to RDF configuration
+    logger?: Logger // Custom logger instance
+    // Additional options...
 }
 
-
 class Orchestrator {
-  constructor(options: OrchestratorOptions);
-  
-  // Start the orchestrator
-  start(): Promise<void>;
-  
-  // Stop the orchestrator
-  stop(): Promise<void>;
-  
-  // Get current status
-  getStatus(): OrchestratorStatus;
+    constructor(options: OrchestratorOptions)
+
+    // Start the orchestrator
+    start(): Promise<void>
+
+    // Stop the orchestrator
+    stop(): Promise<void>
+
+    // Get current status
+    getStatus(): OrchestratorStatus
 }
 ```
 
@@ -188,19 +187,18 @@ Handles the execution of processing tasks.
 
 ```typescript
 interface RunnerOptions {
-  id: string;              // Unique runner ID
-  // Runner configuration...
+    id: string // Unique runner ID
+    // Runner configuration...
 }
 
-
 class Runner {
-  constructor(options: RunnerOptions);
-  
-  // Start the runner
-  start(): Promise<void>;
-  
-  // Execute a processing task
-  execute(task: Task): Promise<Result>;
+    constructor(options: RunnerOptions)
+
+    // Start the runner
+    start(): Promise<void>
+
+    // Execute a processing task
+    execute(task: Task): Promise<Result>
 }
 ```
 
@@ -227,6 +225,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/) for commi
 - `chore`: Build process or auxiliary tool changes
 
 Example:
+
 ```
 feat: add user authentication
 fix: resolve memory leak in processor
