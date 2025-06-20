@@ -1,3 +1,9 @@
+/**
+ * @module orchestrator
+ * @description Core orchestrator implementation that manages the execution of RDF processing pipelines.
+ * Handles pipeline configuration, runner management, and message routing.
+ */
+
 import * as grpc from '@grpc/grpc-js'
 import { NamedNode, Writer } from 'n3'
 import { emptyPipeline, modelShapes, Pipeline, PipelineShape } from './model'
@@ -9,34 +15,90 @@ import { Close, Message, RunnerService, StreamMessage } from '@rdfc/proto'
 import { Server } from './server'
 import { Cont, empty, LensError } from 'rdf-lens'
 
+/**
+ * Defines the callback interface for handling messages and connection closures.
+ * @interface Callbacks
+ * @property {Function} msg - Callback for processing incoming messages
+ * @property {Function} close - Callback for handling connection closures
+ */
 export type Callbacks = {
+    /**
+     * Handles incoming messages from runners.
+     * @param {Message} msg - The received message
+     * @returns {Promise<void>}
+     */
     msg: (msg: Message) => Promise<void>
+    
+    /**
+     * Handles connection closures.
+     * @param {Close} close - Close event details
+     * @returns {Promise<void>}
+     */
     close: (close: Close) => Promise<void>
 }
 
+/**
+ * Type guard to check if a pipeline is defined as a string.
+ * @param {Pipeline | string} pipeline - The pipeline to check
+ * @returns {boolean} True if the pipeline is a string
+ */
 function pipelineIsString(pipeline: Pipeline | string): pipeline is string {
     return typeof pipeline === 'string' || pipeline instanceof String
 }
 
+/**
+ * Main orchestrator class that manages the execution of RDF processing pipelines.
+ * Implements the Callbacks interface for handling messages and connection events.
+ */
 export class Orchestrator implements Callbacks {
+    /** Logger instance for this orchestrator */
     protected readonly logger = getLoggerFor([this])
 
+    /** The gRPC server instance */
     server: Server
 
+    /** Current pipeline configuration */
     pipeline: Pipeline = emptyPipeline
+    
+    /** RDF quads representing the current pipeline */
     quads: Quad[] = []
+    
+    /** Processor definitions parsed from the pipeline */
     definitions: Definitions = {}
 
+    /**
+     * Creates a new Orchestrator instance.
+     * @param {Server} server - The gRPC server instance to use
+     */
     constructor(server: Server) {
         this.server = server
     }
 
+    /**
+     * Sets the pipeline configuration from a URI.
+     * @param {Quad[]} quads - RDF quads representing the pipeline
+     * @param {string} uri - URI of the pipeline configuration
+     * @returns {void}
+     */
     setPipeline(quads: Quad[], uri: string): void
+    
+    /**
+     * Sets the pipeline configuration with provided pipeline and definitions.
+     * @param {Quad[]} quads - RDF quads representing the pipeline
+     * @param {Pipeline} pipeline - The pipeline configuration
+     * @param {Definitions} definitions - Processor definitions
+     * @returns {void}
+     */
     setPipeline(
         quads: Quad[],
         pipeline: Pipeline,
         definitions: Definitions,
     ): void
+    
+    /**
+     * Implementation of setPipeline that handles both overloads.
+     * @private
+     */
     setPipeline(
         quads: Quad[],
         pipeline: Pipeline | string,
@@ -62,6 +124,13 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Handles connection closure for a specific channel.
+     * Propagates the close event to all runners in the pipeline.
+     * 
+     * @param {Close} close - Close event details including the channel identifier
+     * @returns {Promise<void>}
+     */
     async close(close: Close) {
         this.logger.debug('Got close message for channel ' + close.channel)
         await Promise.all(
@@ -69,6 +138,12 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    /**
+     * Processes an incoming message by forwarding it to all runners in the pipeline.
+     * 
+     * @param {Message} msg - The message to process
+     * @returns {Promise<void>}
+     */
     async msg(msg: Message) {
         this.logger.debug('Got data message for channel ' + msg.channel)
         await Promise.all(
@@ -76,6 +151,12 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    /**
+     * Handles streaming messages by forwarding them to all runners in the pipeline.
+     * 
+     * @param {StreamMessage} msg - The stream message to process
+     * @returns {Promise<void>}
+     */
     async streamMessage(msg: StreamMessage) {
         this.logger.debug('Got data stream message for channel ' + msg.channel)
         await Promise.all(
@@ -83,6 +164,19 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    /**
+     * Initializes and starts all runners in the pipeline.
+     * 
+     * @param {string} addr - The address to start the runners on
+     * @param {string} pipeline - The pipeline configuration to send to runners
+     * @returns {Promise<void>}
+     * 
+     * Process Flow:
+     * For each part in the pipeline:
+     *    a. Registers the runner with the server
+     *    b. Starts the runner with the provided address
+     *    c. Sends the pipeline configuration to the runner
+     */
     async startRunners(addr: string, pipeline: string) {
         this.logger.debug('Starting ' + this.pipeline.parts.length + ' runners')
         await Promise.all(
@@ -96,10 +190,31 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    /**
+     * Waits for all runners in the pipeline to complete their execution.
+     * 
+     * @returns {Promise<void>}
+     * @throws {Error} If any runner ends with an error
+     */
     async waitClose() {
         await Promise.all(this.pipeline.parts.map((x) => x.runner.endPromise))
     }
 
+    /**
+     * Initializes and starts all processors in the pipeline.
+     * 
+     * @returns {Promise<void>}
+     * @throws {Array<Error>} If any processor fails to start
+     * 
+     * Process Flow:
+     * 1. For each part in the pipeline:
+     *    a. For each processor in the part:
+     *       i. Attempts to add the processor to the runner
+     *       ii. Collects any errors that occur
+     * 2. If any errors occurred:
+     *    a. Logs each error
+     *    b. Throws an array of all errors
+     */
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
@@ -131,22 +246,31 @@ export class Orchestrator implements Callbacks {
             throw errors
         }
 
-        // const results = await Promise.allSettled(promises)
-        // const promiseErrors = results.filter((x) => x.status === 'rejected')
-        // if (promiseErrors.length > 0) {
-        //     for (const e of promiseErrors) {
-        //         console.log(e);
-        //         this.logger.error(e.reason)
-        //     }
-        //     throw promiseErrors
-        // }
-
         await Promise.all(
             this.pipeline.parts.map((x) => x.runner.startProcessors()),
         )
     }
 }
 
+/**
+ * Initializes and starts the orchestrator with the specified pipeline configuration.
+ * This is the main entry point for the orchestrator service.
+ *
+ * @param {string} location - Filesystem path to the pipeline configuration file
+ * @returns {Promise<void>}
+ * 
+ * @throws {LensError} If there's an error processing the pipeline configuration
+ * @throws {Error} For other runtime errors during startup
+ * 
+ * Process Flow:
+ * 1. Initializes gRPC server and orchestrator instance
+ * 2. Binds the gRPC server to the specified port (default: 50051)
+ * 3. Loads and parses the pipeline configuration
+ * 4. Sets up the pipeline with the loaded configuration
+ * 5. Starts all runners and processors
+ * 6. Waits for the pipeline to complete
+ * 7. Handles graceful shutdown
+ */
 export async function start(location: string) {
     const logger = getLoggerFor(['start'])
     const port = 50051

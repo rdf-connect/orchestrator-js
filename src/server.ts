@@ -1,3 +1,9 @@
+/**
+ * @module server
+ * @description Implements the gRPC server for handling communication between runners and the orchestrator.
+ * Manages connections, message routing, and stream handling.
+ */
+
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import {
@@ -11,27 +17,78 @@ import {
 import { Runner } from './runner'
 import { getLoggerFor } from './logUtil'
 
+/**
+ * Represents a receiver for streamed data chunks.
+ * @typedef {Object} Receiver
+ * @property {Function} data - Callback for handling incoming data chunks
+ * @property {Function} close - Callback for handling stream closure
+ */
 type Receiver = {
     data: (chunk: DataChunk) => Promise<unknown>
     close: () => Promise<unknown>
 }
 
+/**
+ * Represents an open stream with its receivers and buffered data.
+ * @typedef {Object} OpenStream
+ * @property {DataChunk[]} done - Buffered chunks of data
+ * @property {Receiver[]} receivers - Registered receivers for this stream
+ */
 type OpenStream = {
     done: DataChunk[]
     receivers: Receiver[]
 }
 
+/**
+ * gRPC Server implementation for handling runner connections and message routing.
+ * Manages the lifecycle of runners and their communication channels.
+ */
 export class Server {
+    /** Logger instance for the server */
     protected logger = getLoggerFor([this])
+    
+    /** Counter for generating unique stream message IDs */
     protected streaMsgId = 0
+    
+    /** Map of active message streams */
     protected msgStreams: { [id: number]: OpenStream } = {}
+    
+    /** gRPC server instance */
     server: RunnerServer
+    
+    /**
+     * Registry of all connected runners and their associated promises.
+     * 
+     * @type {Object.<string, {part: Runner, promise: () => void}>}
+     * @property {Object} [runnerId] - Each key is a unique runner identifier (URI)
+     * @property {Runner} runnerId.part - The Runner instance handling the connection
+     * @property {() => void} runnerId.promise - Resolver function for the connection promise
+     */
     readonly runners: {
         [label: string]: { part: Runner; promise: () => void }
     } = {}
 
+    /**
+     * Creates a new Server instance and initializes the gRPC server handlers.
+     * Sets up the following gRPC service methods:
+     * - connect: Handles new runner connections
+     * - sendStreamMessage: Manages outgoing data streams
+     * - receiveStreamMessage: Handles incoming data streams
+     * - logStream: Processes log messages from runners
+     */
     constructor() {
         this.server = {
+            /**
+             * Handles new runner connections.
+             * 
+             * @param {grpc.ServerDuplexStream<OrchestratorMessage, RunnerMessage>} stream - Bidirectional stream for communication
+             * @throws {Error} If the first message is not an identify message
+             * 
+             * Process Flow:
+             * 1. Waits for the first message which must be an 'identify' message
+             * 2. Sets up the communication channel with the runner
+             * 3. Resolves the runner's connection promise
+             */
             connect: async (
                 stream: grpc.ServerDuplexStream<
                     OrchestratorMessage,
@@ -61,6 +118,17 @@ export class Server {
 
                 runner.promise()
             },
+            /**
+             * Handles incoming data streams from runners.
+             * 
+             * @param {grpc.ServerDuplexStream<DataChunk, Id>} stream - Bidirectional stream for data transfer
+             * 
+             * Process Flow:
+             * 1. Creates a new stream with a unique ID
+             * 2. Sets up storage for stream data and receivers
+             * 3. Forwards received chunks to all registered receivers
+             * 4. Cleans up resources when the stream ends
+             */
             sendStreamMessage: async (
                 stream: grpc.ServerDuplexStream<DataChunk, Id>,
             ) => {
@@ -103,6 +171,17 @@ export class Server {
                     }
                 }, 500)
             },
+            /**
+             * Handles outgoing data streams to runners.
+             * 
+             * @param {grpc.ServerDuplexStream<Id, DataChunk>} call - Bidirectional stream call
+             * 
+             * Process Flow:
+             * 1. Looks up the stream by ID
+             * 2. Sends any buffered data to the new receiver
+             * 3. Registers the receiver for future data chunks
+             * 4. Handles stream closure
+             */
             receiveStreamMessage: async (call) => {
                 const id = call.request.id
                 const obj = this.msgStreams[id]
@@ -124,6 +203,15 @@ export class Server {
                     })
                 }
             },
+            /**
+             * Processes log messages from runners.
+             * 
+             * @param {grpc.ServerReadableStream<LogMessage>} call - Stream of log messages
+             * 
+             * Process Flow:
+             * 1. Iterates through incoming log messages
+             * 2. Routes each message to the appropriate logger
+             */
             logStream: async (call) => {
                 for await (const chunk of call) {
                     const msg: LogMessage = chunk

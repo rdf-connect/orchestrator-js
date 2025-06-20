@@ -1,3 +1,10 @@
+/**
+ * @module jsonld
+ * @description Provides utilities for working with JSON-LD and RDF data.
+ * Handles conversion between RDF and JSON-LD formats, and provides type definitions
+ * for working with RDF data in a more structured way.
+ */
+
 import { NamedNode, Quad, Term } from '@rdfjs/types'
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { BasicLens, Cont, extractShapes, match, subject } from 'rdf-lens'
@@ -10,6 +17,11 @@ import {
     XSD,
 } from '@treecg/types'
 
+/**
+ * RDFL namespace with common RDF Lens terms.
+ * Provides type-safe access to RDF Lens vocabulary terms.
+ * @type {Namespace<string[], string, string> & { terms: Namespace<string[], NamedNode, string> }}
+ */
 export const RDFL = createUriAndTermNamespace(
     'https://w3id.org/rdf-lens/ontology#',
     'CBD',
@@ -25,14 +37,34 @@ export const RDFL = createUriAndTermNamespace(
     terms: Namespace<string[], NamedNode, string>
 }
 
+// Load and parse the JSON-LD processor definition
 const processor = $INLINE_FILE('./jsonld.ttl')
+
+// Extract shapes from the RDF definition
 const shapes = extractShapes(new Parser().parse(processor))
+
+/**
+ * Lens for processing Processor definitions from RDF data.
+ * @type {BasicLens<Cont<Term>, PlainDefinition>}
+ */
 const processorShape = <BasicLens<Cont<Term>, PlainDefinition>>(
     shapes.lenses['Processor'].map(
         (dto) => new PlainDefinition(<ProcessorDTO>dto),
     )
 )
 
+/**
+ * Data Transfer Object for property definitions.
+ * @typedef {Object} PropertyDTO
+ * @property {string} name - Name of the property
+ * @property {Object} path - Path definition for the property
+ * @property {Term} path.id - Term identifying the path
+ * @property {Quad[]} path.quads - RDF quads defining the path
+ * @property {Term} [clazz] - Optional class constraint for the property
+ * @property {Term} [datatype] - Optional datatype for the property values
+ * @property {number} [minCount] - Optional minimum count constraint
+ * @property {number} [maxCount] - Optional maximum count constraint
+ */
 export type PropertyDTO = {
     name: string
     path: {
@@ -44,12 +76,28 @@ export type PropertyDTO = {
     minCount?: number
     maxCount?: number
 }
+
+/**
+ * Data Transfer Object for processor definitions.
+ * @typedef {Object} ProcessorDTO
+ * @property {Term[]} target - Target types for the processor
+ * @property {Term[]} targetSubjects - Subject terms that match the target types
+ * @property {PropertyDTO[]} properties - Properties defined for the processor
+ */
 export type ProcessorDTO = {
     target: Term[]
     targetSubjects: Term[]
     properties: PropertyDTO[]
 }
 
+/**
+ * Represents the header fields in a JSON-LD context.
+ * @typedef {Object} ContextHeader
+ * @property {string} [@type] - The type of the context
+ * @property {string} [@id] - The identifier for the context
+ * @property {Context} [@context] - Nested context definition
+ * @property {1.1} [@version] - JSON-LD version (1.1)
+ */
 export type ContextHeader = {
     '@type'?: string
     '@id'?: string
@@ -57,17 +105,53 @@ export type ContextHeader = {
     '@version'?: 1.1
 }
 
+/**
+ * Represents a JSON-LD context object that maps terms to IRIs or other contexts.
+ * @typedef {Object} Context
+ * @property {string} [key: string] - Term to IRI or nested context mapping
+ * @extends ContextHeader
+ */
 export type Context = {
     [key: string]: (Context & ContextHeader) | string | number
 } & ContextHeader
 
+/**
+ * Represents a JSON-LD document with flexible value types.
+ * @typedef {Object} Document
+ * @property {DocumentValue | DocumentValue[]} [key: string] - Document properties
+ */
 export type Document = {
     [key: string]: DocumentValue | DocumentValue[]
 }
+
+/**
+ * Represents a value in a JSON-LD document.
+ * Can be a nested document, string, or number.
+ * @typedef {Document | string | number} DocumentValue
+ */
 export type DocumentValue = Document | string | number
 
+/**
+ * Abstract base class for JSON-LD definitions.
+ * Provides common functionality for converting RDF quads to JSON-LD documents.
+ */
 export abstract class Definition {
+    /**
+     * Adds this definition's context to the provided context object.
+     * @abstract
+     * @param {Context} context - The context object to extend
+     */
     abstract addToContext(context: Context): void
+
+    /**
+     * Converts RDF quads to a JSON-LD document.
+     * @abstract
+     * @param {Term} id - The subject term to process
+     * @param {Quad[]} quads - Array of RDF quads to process
+     * @param {{ [id: string]: Definition }} others - Other definitions for reference
+     * @param {boolean} [isNest] - Whether this is a nested document
+     * @returns {Document} The resulting JSON-LD document
+     */
     abstract addToDocument(
         id: Term,
         quads: Quad[],
@@ -75,10 +159,16 @@ export abstract class Definition {
         isNest?: boolean,
     ): Document
 
-    // Gets the already started document for an identifier if it already exists
-    // In JSON-LD, identifiers are not allowed to be repeated with content
-    // If no document exists, it is created and inserted into  the cache
-    protected getFromCache(id: Term, isNest = false): Document {
+    /**
+     * Creates a new JSON-LD document structure for the given RDF term.
+     * Handles different term types (Literals, URIs, Blank Nodes) appropriately.
+     * 
+     * @protected
+     * @param {Term} id - The RDF term to create a document for
+     * @param {boolean} [isNest=false] - If true, creates a nested document without @id
+     * @returns {Document} A new document with appropriate JSON-LD structure
+     */
+    protected createDocumentBase(id: Term, isNest = false): Document {
         const actualId = id.termType == 'BlankNode' ? '_:' + id.value : id.value
         if (id.termType === 'Literal') {
             return {
@@ -95,13 +185,38 @@ export abstract class Definition {
     }
 }
 
+/**
+ * Implements Concise Bounded Description (CBD) for RDF to JSON-LD conversion.
+ * Follows the CBD algorithm to extract a subgraph about a resource.
+ */
 export class CBDDefinition extends Definition {
+    /** The RDF type this definition represents */
     private readonly type: string
+
+    /**
+     * Creates a new CBDDefinition instance.
+     * @param {string} type - The RDF type this definition represents
+     */
     constructor(type: string) {
         super()
         this.type = type
     }
+    /**
+     * No-op implementation for adding to context (handled by PlainDefinition).
+     * @override
+     */
     addToContext(): void {}
+
+    /**
+     * Converts RDF quads to a JSON-LD document using CBD algorithm.
+     * @override
+     * @param {Term} id - The subject term to process
+     * @param {Quad[]} quads - Array of RDF quads to process
+     * @param {{ [id: string]: Definition }} others - Other definitions for reference
+     * @param {boolean} [isNest=false] - Whether this is a nested document
+     * @param {boolean} [deep=false] - Internal flag for recursion
+     * @returns {Document} The resulting JSON-LD document
+     */
     addToDocument(
         id: Term,
         quads: Quad[],
@@ -109,7 +224,7 @@ export class CBDDefinition extends Definition {
         isNest = false,
         deep = false,
     ): Document {
-        const out = this.getFromCache(id, isNest)
+        const out = this.createDocumentBase(id, isNest)
 
         for (const t of quads.filter((x) => x.subject.equals(id))) {
             if (!out[t.predicate.value]) {
@@ -223,7 +338,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         others: { [id: string]: Definition },
         isNest: boolean = false,
     ): Document {
-        const out = this.getFromCache(id, isNest)
+        const out = this.createDocumentBase(id, isNest)
         if (this.target.length == 1) {
             out['@type'] = this.target[0].value
         } else {
@@ -300,7 +415,24 @@ function handleAccordingToProperty<T>(
     }
 }
 
+/**
+ * Represents a collection of definitions.
+ */
 export type Definitions = { [id: string]: Definition }
+
+/**
+ * Parses RDF quads into processor definitions.
+ * Extracts and processes processor definitions from RDF data.
+ * 
+ * The function automatically includes the following built-in definitions:
+ * - CBD (Concise Bounded Description): Extracts a subgraph about a resource
+ * - Path: Handles RDF path expressions
+ * - TypedExtract: Extracts typed literals from RDF data
+ * 
+ * @param {Quad[]} quads - RDF quads to parse
+ * @returns {Definitions} Processed definitions including both parsed and built-in definitions
+ * @throws {Error} If no processor definitions are found in the input quads
+ */
 export function parse_processors(quads: Quad[]): Definitions {
     const dtos = match(undefined, RDF.terms.type, SHACL.terms.NodeShape)
         .thenAll(subject)

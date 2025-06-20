@@ -1,3 +1,9 @@
+/**
+ * @module runner
+ * @description Implements the runner functionality for executing processing tasks.
+ * Defines the base Runner class and specific implementations like CommandRunner and TestRunner.
+ */
+
 import { parse } from 'shell-quote'
 import {
     Close,
@@ -17,6 +23,11 @@ import { jsonld_to_string, RDFC } from './util'
 import { getLoggerFor } from './logUtil'
 import { Logger } from 'winston'
 
+/**
+ * Recursively walks through a JSON object and applies a callback to each object.
+ * @param {unknown} obj - The object to walk through
+ * @param {(value: { [id: string]: unknown }) => void} cb - Callback function to apply to each object
+ */
 function walkJson(
     obj: unknown,
     cb: (value: { [id: string]: unknown }) => void,
@@ -32,45 +43,87 @@ function walkJson(
     }
 }
 
+/**
+ * Defines the communication channels between runner and orchestrator.
+ * @typedef {Object} Channels
+ * @property {Function} sendMessage - Function to send messages to the runner
+ * @property {ObjectReadable<OrchestratorMessage>} receiveMessage - Stream for receiving messages from the orchestrator
+ */
 export type Channels = {
     sendMessage: (msg: RunnerMessage) => Promise<void>
     receiveMessage: ObjectReadable<OrchestratorMessage>
 }
 
+/**
+ * Configuration for initializing a Runner.
+ * @typedef {Object} RunnerConfig
+ * @property {Term} id - Unique identifier for the runner
+ * @property {Term} handles - The type of processors this runner can handle
+ * @property {Orchestrator} orchestrator - Reference to the parent orchestrator
+ */
 export type RunnerConfig = {
     id: Term
     handles: Term
     orchestrator: Orchestrator
 }
 
+/**
+ * Abstract base class for all runner implementations.
+ * Handles communication with the orchestrator and manages processor lifecycle.
+ */
 export abstract class Runner {
+    /** Logger instance for this runner */
     protected logger: Logger
 
+    /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
         async () => {}
+        
+    /** Map of processor IDs to their cleanup functions */
     protected processors: { [id: string]: () => void } = {}
+    
+    /** Reference to the parent orchestrator */
     protected orchestrator: Orchestrator
 
+    /** Unique identifier for this runner */
     readonly id: Term
+    
+    /** The type of processors this runner can handle */
     readonly handles: Term
 
+    /** Set of channel IRIs this runner is currently handling */
     readonly handlesChannels: Set<string> = new Set()
 
+    /** Callback for when the runner ends */
     private endCb!: (v: unknown) => unknown
+    
+    /** Promise that resolves when the runner ends */
     readonly endPromise: Promise<unknown>
 
+    /**
+     * Creates a new Runner instance.
+     * @param {RunnerConfig} config - Configuration for the runner
+     */
     constructor(config: RunnerConfig) {
         Object.assign(this, config)
         this.logger = getLoggerFor([this.id.value, this])
         this.endPromise = new Promise((res) => (this.endCb = res))
     }
 
+    /**
+     * Abstract method that must be implemented by subclasses to start the runner.
+     * @param {string} addr - The address to start the runner on
+     * @returns {Promise<void>}
+     */
     abstract start(addr: string): Promise<void>
 
-    // Sets up the communication channels to and from the runner
-    // Routing incoming messages to the orchestrator
-    // And sending messages to the runner
-    // Including starting new processors
+    /**
+     * Sets up bidirectional communication channels between the runner and orchestrator.
+     * Routes incoming messages to the appropriate handlers and manages the message loop.
+     * 
+     * @param {Channels} channels - Communication channels for message passing
+     * @returns {Promise<void>}
+     */
     async setChannel(channels: Channels) {
         this.sendMessage = channels.sendMessage
 
@@ -82,30 +135,59 @@ export abstract class Runner {
         this.endCb(undefined)
     }
 
+    /**
+     * Sends a pipeline configuration to the runner.
+     * @param {string} pipeline - The pipeline configuration to send
+     * @returns {Promise<void>}
+     */
     async sendPipeline(pipeline: string) {
         await this.sendMessage({ pipeline })
     }
 
+    /**
+     * Signals the runner to start all registered processors.
+     * @returns {Promise<void>}
+     */
     async startProcessors() {
         await this.sendMessage({ start: Empty })
     }
 
+    /**
+     * Forwards a message to the runner if it handles the specified channel.
+     * @param {Message} msg - The message to forward
+     * @returns {Promise<void>}
+     */
     async msg(msg: Message) {
         if (this.handlesChannels.has(msg.channel)) {
             await this.sendMessage({ msg })
         }
     }
 
+    /**
+     * Forwards a stream message to the runner if it handles the specified channel.
+     * @param {StreamMessage} streamMsg - The stream message to forward
+     * @returns {Promise<void>}
+     */
     async streamMessage(streamMsg: StreamMessage) {
         if (this.handlesChannels.has(streamMsg.channel)) {
             await this.sendMessage({ streamMsg })
         }
     }
 
+    /**
+     * Sends a close message to the runner.
+     * @param {Close} close - Close message details
+     * @returns {Promise<void>}
+     */
     async close(close: Close) {
         await this.sendMessage({ close })
     }
 
+    /**
+     * Handles incoming messages from the runner and routes them to the appropriate handler.
+     * @param {OrchestratorMessage} msg - The message to handle
+     * @returns {Promise<void>}
+     */
     async handleMessage(msg: OrchestratorMessage): Promise<void> {
         if (msg.msg) {
             this.logger.debug('Runner handle data msg to ', msg.msg.channel)
@@ -134,8 +216,16 @@ export abstract class Runner {
         }
     }
 
-    // Tells the runner to start a processor with configuration
-    // Returning a promise that resolves when the processor is initialized
+    /**
+     * Instructs the runner to start a new processor with the given configuration.
+     * The method resolves when the processor is fully initialized.
+     * 
+     * @param {SmallProc} proc - The processor to start
+     * @param {Quad[]} quads - RDF quads containing processor configuration
+     * @param {Definitions} discoveredShapes - Available shape definitions
+     * @returns {Promise<void>}
+     * @throws {Error} If no shape definition is found for the processor
+     */
     async addProcessor(
         proc: SmallProc,
         quads: Quad[],
@@ -202,14 +292,31 @@ export abstract class Runner {
     }
 }
 
+/**
+ * A Runner implementation that starts a runner from an external command.
+ * Manages the lifecycle of external processor processes.
+ */
 export class CommandRunner extends Runner {
+    /** The command to execute for this runner */
     private command: string
+    
+    /**
+     * Creates a new CommandRunner instance.
+     * @param {RunnerConfig & { command: string }} config - Runner configuration including the command to execute
+     */
     constructor(config: RunnerConfig & { command: string }) {
         super(config)
         this.command = config.command
         this.logger.debug('Built a command runner!')
     }
 
+    /**
+     * Starts the command runner by executing the configured command.
+     * Sets up stdout/stderr handlers and manages the child process.
+     * 
+     * @param {string} addr - The address to connect to
+     * @returns {Promise<void>}
+     */
     async start(addr: string) {
         const uri = this.id.value
         const [cmd, ...args] = parse(this.command) as string[]
@@ -233,19 +340,39 @@ export class CommandRunner extends Runner {
     }
 }
 
+/**
+ * A test implementation of the Runner interface for testing purposes.
+ * Simulates runner behavior without executing actual processors.
+ */
 export class TestRunner extends Runner {
+    /** List of processor URIs that have been started */
     private startedProcessors: string[] = []
+    
+    /**
+     * Creates a new TestRunner instance.
+     * @param {RunnerConfig} config - Runner configuration
+     */
     constructor(config: RunnerConfig) {
         super(config)
         this.logger.info('Built testrunner')
     }
 
+    /**
+     * Simulates starting the test runner.
+     * @param {string} addr - The address to connect to
+     * @returns {Promise<void>}
+     */
     async start(addr: string): Promise<void> {
         this.logger.info("Test runner 'starting'", addr)
         this.logger.info('debug msg should follow')
         this.logger.debug('connecting with ' + addr)
     }
 
+    /**
+     * Simulates starting all registered processors.
+     * Used for testing processor initialization.
+     * @returns {Promise<void>}
+     */
     async mockStartProcessor(): Promise<void> {
         this.logger.info(
             'Mock start processors ' + JSON.stringify(this.startedProcessors),
@@ -256,6 +383,20 @@ export class TestRunner extends Runner {
         }
     }
 
+    /**
+     * Adds a processor to this test runner and tracks it in the started processors list.
+     * Overrides the parent class method to add test-specific behavior.
+     * 
+     * @param {SmallProc} proc - The processor to add
+     * @param {Quad[]} quads - RDF quads containing processor configuration
+     * @param {Definitions} discoveredShapes - Available shape definitions
+     * @returns {Promise<void>} Resolves when the processor is added
+     * 
+     * Process Flow:
+     * 1. Tracks the processor ID in startedProcessors for test verification
+     * 2. Delegates to parent class implementation for actual processor setup
+     * 3. Awaits the completion of processor initialization
+     */
     async addProcessor(
         proc: SmallProc,
         quads: Quad[],
