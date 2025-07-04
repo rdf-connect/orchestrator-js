@@ -10,7 +10,7 @@ const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 const logger = getLoggerFor(['util.ts'])
 
 export const RDFC = createNamespace(
-    'https://w3id.org/rdf-connect/ontology#',
+    'https://w3id.org/rdf-connect#',
     (x) => x,
     'Reader',
 )

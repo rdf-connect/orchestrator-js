@@ -4,6 +4,7 @@
  * Defines the pipeline structure, RDF shapes, and related types.
  */
 
+
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { Term } from '@rdfjs/types'
 import { NamedNode, Parser } from 'n3'
@@ -75,14 +76,14 @@ export const modelQuads = new Parser().parse(processor)
 /**
  * Extracted shapes from the RDF model with custom constructors for different instnatiator types.
  * @type {Object}
- * @property {Function} 'https://w3id.org/rdf-connect/ontology#Runner' - Constructor for CommandRunner
- * @property {Function} 'https://w3id.org/rdf-connect/ontology#TestRunner' - Constructor for TestRunner
+ * @property {Function} 'https://w3id.org/rdf-connect#Runner' - Constructor for CommandRunner
+ * @property {Function} 'https://w3id.org/rdf-connect#TestRunner' - Constructor for TestRunner
  */
 export const modelShapes = extractShapes(modelQuads, {
-    'https://w3id.org/rdf-connect/ontology#Runner': (
+    'https://w3id.org/rdf-connect#Runner': (
         inp: InstantiatorConfig & { command: string },
     ) => new CommandInstantiator(inp),
-    'https://w3id.org/rdf-connect/ontology#TestRunner': (
+    'https://w3id.org/rdf-connect#TestRunner': (
         inp: InstantiatorConfig,
     ) => new TestInstantiator(inp),
 })

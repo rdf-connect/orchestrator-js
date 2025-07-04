@@ -50,14 +50,14 @@ class TestServer extends Server {
 describe('Setup orchestrator', async () => {
     const server = new TestServer()
     const orchestrator = new Orchestrator(server)
-    modelShapes.lenses['https://w3id.org/rdf-connect/ontology#Orchestrator'] =
+    modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)
     const location = path.resolve('./pipeline.ttl')
 
     const content = `
 @prefix ex: <http://example.org/>.
 @prefix owl: <http://www.w3.org/2002/07/owl#>.
-@prefix rdfc: <https://w3id.org/rdf-connect/ontology#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
 
 <> owl:imports <__tests__/config.ttl>.
 <> a rdfc:Pipeline;

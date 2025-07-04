@@ -337,6 +337,6 @@ export async function start(location: string) {
 
 // Maps rdfc:Orchestrator to this orchestrator
 function setupOrchestratorLens(orchestrator: Orchestrator) {
-    modelShapes.lenses['https://w3id.org/rdf-connect/ontology#Orchestrator'] =
+    modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)
 }
