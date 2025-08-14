@@ -4,7 +4,7 @@
  * Defines the base Instantiator class and specific implementations like CommandInstantiator and TestInstantiator.
  */
 
-import { parse } from 'shell-quote'
+import { parse, quote } from 'shell-quote'
 import {
     Close,
     Empty,
@@ -77,9 +77,9 @@ export abstract class Instantiator {
 
     /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => {}
+        async () => { }
 
-    /** Map of processor IDs to their cleanup functions */
+    /** Map of processor IDs to their startup functions */
     protected processors: { [id: string]: () => void } = {}
 
     /** Reference to the parent orchestrator */
@@ -319,15 +319,20 @@ export class CommandInstantiator extends Instantiator {
      */
     async start(addr: string) {
         const uri = this.id.value
-        const [cmd, ...args] = parse(this.command) as string[]
+        const args = parse(this.command) as string[]
         args.push(addr, uri)
 
-        this.logger.info('debug msg should follow')
-        this.logger.debug('starting with ' + JSON.stringify([cmd, ...args]))
-        const child = spawn(cmd, args)
+        const singleCmd = quote(args)
 
-        child.stdout.on('data', (data) => {
-            this.logger.info('From command ' + (<string>data.toString()).trim())
+        this.logger.info('debug msg should follow')
+        this.logger.debug(
+            'starting with ' +
+            JSON.stringify(['bash', ['-l', '-c', singleCmd]]),
+        )
+        const child = spawn('bash', ['-l', '-c', singleCmd])
+
+        child.stdout.on('data', () => {
+            // this.logger.info('From command ' + (<string>data.toString()).trim())
         })
 
         child.stderr.on('data', (data) => {
