@@ -6,6 +6,8 @@ import { createNamespace, createTermNamespace } from '@treecg/types'
 import { readFile } from 'fs/promises'
 import { getLoggerFor, prefixFound } from './logUtil'
 
+import JSZip from 'jszip'
+
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 const logger = getLoggerFor(['util.ts'])
 
@@ -72,17 +74,62 @@ export async function readQuads(
             logger.debug('Expanding ' + current)
 
             const url = new URL(current)
-            if (url.protocol !== 'file:') {
+            const newQuads: Quad[] = []
+            if (url.protocol === 'file:') {
+                const text = await readFile(url.pathname, {
+                    encoding: 'utf8',
+                })
+                // Read the quads
+                const nq = new Parser({ baseIRI: current }).parse(
+                    text,
+                    undefined,
+                    prefixFound,
+                )
+                newQuads.push(...nq)
+            } else if (url.protocol === 'http:' || url.protocol === 'https:') {
+                const resp = await fetch(url)
+
+                if (
+                    url.toString().endsWith('.jar') ||
+                    url.toString().endsWith('.zip')
+                ) {
+                    logger.debug(
+                        `${url.toString()} status ${resp.status} ${resp.statusText}`,
+                    )
+                    const blob = await resp.blob()
+                    const bytes = await blob.arrayBuffer()
+                    const zip = await JSZip.loadAsync(bytes)
+
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    for (const [_, file] of Object.entries(zip.files)) {
+                        if (!file.dir) {
+                            // skip directories
+                            try {
+                                const content = await file.async('string')
+
+                                const nq = new Parser({
+                                    baseIRI: current,
+                                }).parse(content, undefined, prefixFound)
+
+                                newQuads.push(...nq)
+                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                            } catch (err) {
+                                // nothing
+                            }
+                        }
+                    }
+                } else {
+                    const text = await resp.text()
+                    const nq = new Parser({ baseIRI: current }).parse(
+                        text,
+                        undefined,
+                        prefixFound,
+                    )
+                    newQuads.push(...nq)
+                }
+            } else {
                 throw 'No supported protocol ' + url.protocol
             }
-
-            // Read the quads
-            const txt = await readFile(url.pathname, { encoding: 'utf8' })
-            const newQuads = new Parser({ baseIRI: current }).parse(
-                txt,
-                undefined,
-                prefixFound,
-            )
 
             todo.push(
                 ...newQuads
