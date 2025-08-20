@@ -71,33 +71,22 @@ export type InstantiatorConfig = {
  * Handles communication with the orchestrator and manage the runner instance and their processors.
  */
 export abstract class Instantiator {
-    /** Logger instance for the runner */
-    protected logger: Logger
-
-    /** Function to send messages to the runner */
-    protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => {}
-
-    /** Map of processor IDs to their startup functions */
-    protected processors: { [id: string]: () => void } = {}
-
-    /** Reference to the parent orchestrator */
-    protected orchestrator: Orchestrator
-
     /** Unique identifier for this instantiator */
     readonly id: Term
-
     /** The type of processors this instantiator can handle */
     readonly handles: Term
-
     /** Set of channel IRIs this runner is currently handling */
     readonly handlesChannels: Set<string> = new Set()
-
-    /** Callback for when the runner ends */
-    private endCb!: (v: unknown) => unknown
-
     /** Promise that resolves when the runner ends */
     readonly endPromise: Promise<unknown>
+    /** Logger instance for the runner */
+    protected logger: Logger
+    /** Map of processor IDs to their startup functions */
+    protected processorsStartupFns: { [id: string]: () => void } = {}
+    /** Reference to the parent orchestrator */
+    protected orchestrator: Orchestrator
+    /** Callback for when the runner ends */
+    private endCb!: (v: unknown) => unknown
 
     /**
      * Creates a new Instantiator instance.
@@ -208,7 +197,7 @@ export abstract class Instantiator {
             if (msg.init.error) {
                 this.logger.error('Init message error ' + msg.init.error)
             }
-            this.processors[msg.init.uri]()
+            this.processorsStartupFns[msg.init.uri]()
         }
         if (msg.identify) {
             this.logger.error("Didn't expect identify message")
@@ -275,7 +264,9 @@ export abstract class Instantiator {
         )
 
         const processorIsInit = new Promise(
-            (res) => (this.processors[proc.id.value] = () => res(undefined)),
+            (res) =>
+                (this.processorsStartupFns[proc.id.value] = () =>
+                    res(undefined)),
         )
         const jsonldDoc = jsonld_to_string(document)
 
@@ -289,6 +280,10 @@ export abstract class Instantiator {
 
         await processorIsInit
     }
+
+    /** Function to send messages to the runner */
+    protected sendMessage: (msg: RunnerMessage) => Promise<void> =
+        async () => {}
 }
 
 /**

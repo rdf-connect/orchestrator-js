@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { start } from '../lib/orchestrator.js'
+import { start } from '../lib/index.js'
 import path from 'path'
 
 const location = path.resolve(process.argv[2])
