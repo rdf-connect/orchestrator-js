@@ -31,7 +31,7 @@ A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/orchestrator-js.git
+git clone https://github.com/rdf-connect/orchestrator-js.git
 cd orchestrator-js
 
 # Install dependencies
@@ -52,7 +52,7 @@ The orchestrator can be run using the provided CLI:
 
 ```bash
 # Run with a pipeline configuration
-node bin/runner.js path/to/your/pipeline.ttl
+node bin/orchestrator.js path/to/your/pipeline.ttl
 
 # Or using the installed binary (if installed globally)
 rdfc path/to/your/pipeline.ttl
@@ -61,7 +61,7 @@ rdfc path/to/your/pipeline.ttl
 ### Programmatic API
 
 ```typescript
-import { Orchestrator } from 'orchestrator'
+import { Orchestrator } from '@rdfc/orchestrator-js'
 
 // Initialize with your configuration
 const orchestrator = new Orchestrator({
@@ -77,10 +77,38 @@ await orchestrator.start()
 Pipeline configurations are defined using RDF/Turtle format. Here's an example configuration:
 
 ```turtle
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix ex: <http://example.org/> .
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
 
-# Define your pipeline configuration here
+### Import runners and processors
+<> owl:imports <./.venv/lib/python3.13/site-packages/rdfc_runner/index.ttl>.
+<> owl:imports <./.venv/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>.
+
+
+### Define the channels
+<channel> a rdfc:Writer, rdfc:Reader.
+
+
+### Define the pipeline
+<> a rdfc:Pipeline;
+   rdfc:consistsOf [
+       rdfc:instantiates rdfc:PyRunner;
+       rdfc:processor <log>, <send>;
+   ].
+
+
+### Define the processors
+<send> a rdfc:SendProcessorPy;
+       rdfc:writer <channel>;
+       rdfc:msg "Hello, World!", "Good afternoon, World!",
+                "Good evening, World!", "Good night, World!".
+
+<log> a rdfc:LogProcessorPy;
+      rdfc:reader <channel>;
+      rdfc:level "info";
+      rdfc:label "test".
+
+
 ```
 
 ## Development
@@ -134,19 +162,16 @@ npm run format
 
 ```
 orchestrator-js/
-├── bin/                    # Executable scripts
-│   ├── orchestrator.js    # Main CLI entry point
-│   └── runner.js         # Pipeline runner
-├── lib/                   # Compiled JavaScript output
-├── src/                   # TypeScript source files
-│   ├── client.ts         # Client implementation
+├── bin/                  # Executable scripts
+│   └── orchestrator.js   # Main CLI entry point and pipeline executor
+├── lib/                  # Compiled JavaScript output
+├── src/                  # TypeScript source files
 │   ├── index.ts          # Main export
+│   ├── instantiator.ts   # Runner instantiation logic
 │   ├── jsonld.ts         # JSON-LD utilities
 │   ├── logUtil.ts        # Logging utilities
 │   ├── model.ts          # Data models and types
 │   ├── orchestrator.ts   # Core orchestrator logic
-│   ├── processor.ts      # Processor implementation
-│   ├── runner.ts         # Runner implementation
 │   ├── server.ts         # Server implementation
 │   └── util.ts           # Utility functions
 ├── __tests__/            # Test files
@@ -274,7 +299,7 @@ sequenceDiagram
     end
     loop For every runner
         O-->>R: RPC.Start: Start
-        loop For every Processor
+        loop For every processor
             R-->>P: Start
         end
     end
@@ -327,7 +352,7 @@ sequenceDiagram
         P1 -->> R1: Data chunks
         R1 -->> O: Data chunks over stream
         O -->> R2: Data chunks over stream
-        R2 -->>P2: Data chnuks
+        R2 -->>P2: Data chunks
     end
 ```
 
