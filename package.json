@@ -1,6 +1,6 @@
 {
-    "name": "orchestrator",
-    "version": "1.0.1",
+    "name": "@rdfc/orchestrator-js",
+    "version": "1.0.0",
     "main": "index.js",
     "type": "module",
     "bin": {
