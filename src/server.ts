@@ -48,7 +48,7 @@ export class Server {
     protected logger = getLoggerFor([this])
 
     /** Counter for generating unique stream message IDs */
-    protected streaMsgId = 0
+    protected streamMsgId = 0
 
     /** Map of active message streams */
     protected msgStreams: { [id: number]: OpenStream } = {}
@@ -57,15 +57,15 @@ export class Server {
     server: RunnerServer
 
     /**
-     * Registry of all connected runners and their associated promises.
+     * Registry of all connected instantiators and their associated promises.
      *
-     * @type {Object.<string, {part: Runner, promise: () => void}>}
-     * @property {Object} [runnerId] - Each key is a unique runner identifier (URI)
-     * @property {Runner} runnerId.part - The Runner instance handling the connection
-     * @property {() => void} runnerId.promise - Resolver function for the connection promise
+     * @type {Object.<string, {part: Instantiator, promise: () => void}>}
+     * @property {Object} [instantiatorId] - Each key is a unique instantiator identifier (URI)
+     * @property {Instantiator} instantiatorId.part - The Instantiator instance handling the connection
+     * @property {() => void} instantiatorId.promise - Resolver function for the connection promise
      */
     readonly instantiators: {
-        [label: string]: { part: Instantiator; promise: () => void }
+        [instantiatorId: string]: { part: Instantiator; promise: () => void }
     } = {}
 
     /**
@@ -132,8 +132,8 @@ export class Server {
             sendStreamMessage: async (
                 stream: grpc.ServerDuplexStream<DataChunk, Id>,
             ) => {
-                const id = this.streaMsgId
-                this.streaMsgId += 1
+                const id = this.streamMsgId
+                this.streamMsgId += 1
                 this.logger.debug('Openin stream with id ' + id)
 
                 const obj: OpenStream = {
