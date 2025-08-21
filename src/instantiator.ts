@@ -222,7 +222,7 @@ export abstract class Instantiator {
         const shape = discoveredShapes[proc.type.value]
         if (!shape) {
             this.logger.error(
-                `Failed to find a shape defintion for ${proc.id.value} (expects shape for ${proc.type.value})`,
+                `Failed to find a shape definition for ${proc.id.value} (expects shape for ${proc.type.value})`,
             )
             throw 'No shape definition found'
         }
