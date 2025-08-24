@@ -113,7 +113,7 @@ export class Orchestrator implements Callbacks {
         }
         this.logger.debug(
             'Found definitions ' +
-                JSON.stringify(Object.keys(this.definitions)),
+            JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
             this.pipeline = PipelineShape.execute({
@@ -223,8 +223,8 @@ export class Orchestrator implements Callbacks {
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
-                this.pipeline.parts.map((x) => x.processors.length) +
-                ' processors',
+            this.pipeline.parts.map((x) => x.processors.length) +
+            ' processors',
         )
         const errors = []
 
