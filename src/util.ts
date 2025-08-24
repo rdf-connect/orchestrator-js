@@ -95,7 +95,7 @@ async function parseArchive(
 
 async function fetchResource(url: URL): Promise<Uint8Array | ArrayBuffer> {
     if (url.protocol === 'file:') {
-        return readFile(url.pathname)
+        return readFile(url);
     } else if (url.protocol === 'http:' || url.protocol === 'https:') {
         const resp = await fetch(url)
         logger.debug(

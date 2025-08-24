@@ -1,25 +1,23 @@
 import { PrefixCallback } from 'n3'
 import path from 'path'
+import { pathToFileURL } from 'url'
 import winston, { format, Logger } from 'winston'
 
-const urlBase = new URL('file://' + path.resolve('./pipeline.ttl'))
-function fileLess(st: string): string {
-    const segments = st.split('/')
-    segments.pop()
-    return segments.join('/') + '/'
-}
+const urlBase = new URL("./", pathToFileURL(path.resolve('./pipeline.ttl')));
+
 const prefixes: { prefix: string; node: string }[] = [
     {
         prefix: '',
-        node: fileLess(urlBase.toString()),
+        node: urlBase.toString(),
     },
 ]
 
-export function setPipelineFile(path: string) {
+export function setPipelineFile(path: URL) {
     while (prefixes.pop()) {
         //clearing
     }
-    prefixes.push({ prefix: '', node: fileLess(path) })
+    const dirUrl = new URL("./", path).toString();
+    prefixes.push({ prefix: '', node: dirUrl })
 }
 
 export const prefixFound: PrefixCallback = (prefix, node) => {

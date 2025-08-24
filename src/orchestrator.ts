@@ -14,6 +14,7 @@ import { Quad } from '@rdfjs/types'
 import { Close, Message, RunnerService, StreamMessage } from '@rdfc/proto'
 import { Server } from './server'
 import { Cont, empty, LensError } from 'rdf-lens'
+import { pathToFileURL } from 'url'
 
 /**
  * Defines the callback interface for handling messages and connection closures.
@@ -110,7 +111,7 @@ export class Orchestrator implements Callbacks {
         } else {
             this.definitions = definitions
         }
-        this.logger.info(
+        this.logger.debug(
             'Found definitions ' +
                 JSON.stringify(Object.keys(this.definitions)),
         )
@@ -293,14 +294,14 @@ export async function start(location: string) {
 
     const addr = 'localhost:' + port
     logger.info('Grpc server is bound! ' + addr)
-    const iri = 'file://' + location
+    const iri = pathToFileURL(location);
     setPipelineFile(iri)
-    const quads = await readQuads([iri])
+    const quads = await readQuads([iri.toString()])
 
     reevaluteLevels()
     logger.debug('Setting pipeline')
     try {
-        orchestrator.setPipeline(quads, iri)
+        orchestrator.setPipeline(quads, iri.toString())
     } catch (ex: unknown) {
         if (ex instanceof LensError) {
             console.error(ex.message)
@@ -309,12 +310,6 @@ export async function start(location: string) {
             }
 
             process.exit(1)
-        }
-    }
-
-    for (const p of orchestrator.pipeline.parts) {
-        for (const pr of p.processors) {
-            console.log(pr)
         }
     }
 
