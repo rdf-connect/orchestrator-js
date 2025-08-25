@@ -265,8 +265,8 @@ export abstract class Instantiator {
 
         const processorIsInit = new Promise(
             (res) =>
-            (this.processorsStartupFns[proc.id.value] = () =>
-                res(undefined)),
+                (this.processorsStartupFns[proc.id.value] = () =>
+                    res(undefined)),
         )
         const jsonldDoc = jsonld_to_string(document)
 
@@ -283,7 +283,7 @@ export abstract class Instantiator {
 
     /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => { }
+        async () => {}
 }
 
 /**
@@ -406,5 +406,3 @@ export class TestInstantiator extends Instantiator {
         await res
     }
 }
-
-

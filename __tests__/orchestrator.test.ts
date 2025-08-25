@@ -17,7 +17,7 @@ const encoder = new TextEncoder()
 class TestServer extends Server {
     expectInstantiator(runner: Instantiator): Promise<void> {
         this.logger.info('Expecting runner')
-        return super.expectRunner(runner);
+        return super.expectRunner(runner)
     }
     connectRunners(): {
         [runnerId: string]: {
@@ -107,7 +107,11 @@ describe('Setup orchestrator', async () => {
 
         const startingPromise = orchestrator.startProcessors()
         orchestrator.pipeline.parts.forEach((r) => {
-            console.log("Got runner ", r, r.instantiator instanceof TestInstantiator)
+            console.log(
+                'Got runner ',
+                r,
+                r.instantiator instanceof TestInstantiator,
+            )
             if (r.instantiator instanceof TestInstantiator) {
                 r.instantiator.mockStartProcessor()
             }
