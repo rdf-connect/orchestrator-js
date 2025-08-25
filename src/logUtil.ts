@@ -3,7 +3,7 @@ import path from 'path'
 import { pathToFileURL } from 'url'
 import winston, { format, Logger } from 'winston'
 
-const urlBase = new URL("./", pathToFileURL(path.resolve('./pipeline.ttl')));
+const urlBase = new URL('./', pathToFileURL(path.resolve('./pipeline.ttl')))
 
 const prefixes: { prefix: string; node: string }[] = [
     {
@@ -16,7 +16,7 @@ export function setPipelineFile(path: URL) {
     while (prefixes.pop()) {
         //clearing
     }
-    const dirUrl = new URL("./", path).toString();
+    const dirUrl = new URL('./', path).toString()
     prefixes.push({ prefix: '', node: dirUrl })
 }
 

@@ -228,6 +228,7 @@ export class Orchestrator implements Callbacks {
         )
         const errors = []
 
+        const startPromises = [];
         for (const part of this.pipeline.parts) {
             const runner = part.instantiator
             for (const procId of part.processors) {
@@ -235,12 +236,21 @@ export class Orchestrator implements Callbacks {
                     this.logger.debug(
                         `Adding processor ${procId.id.value} (${procId.type.value}) to runner ${runner.id.value}`,
                     )
-                    runner.addProcessor(procId, this.quads, this.definitions)
+                    startPromises.push(
+                        runner.addProcessor(
+                            procId,
+                            this.quads,
+                            this.definitions,
+                        )
+
+                    )
                 } catch (ex) {
                     errors.push(ex)
                 }
             }
         }
+
+        await Promise.all(startPromises);
 
         if (errors.length > 0) {
             for (const e of errors) {
@@ -294,7 +304,7 @@ export async function start(location: string) {
 
     const addr = 'localhost:' + port
     logger.info('Grpc server is bound! ' + addr)
-    const iri = pathToFileURL(location);
+    const iri = pathToFileURL(location)
     setPipelineFile(iri)
     const quads = await readQuads([iri.toString()])
 
