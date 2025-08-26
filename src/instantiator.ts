@@ -19,7 +19,7 @@ import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
 import { Definitions } from './jsonld'
 import { SmallProc } from './model'
 import { jsonld_to_string, RDFC } from './util'
-import { getLoggerFor } from './logUtil'
+import { collapseLast, getLoggerFor } from './logUtil'
 import { Logger } from 'winston'
 
 /**
@@ -115,8 +115,14 @@ export abstract class Instantiator {
     async setChannel(channels: Channels) {
         this.sendMessage = channels.sendMessage
 
-        for await (const msg of channels.receiveMessage) {
-            await this.handleMessage(msg)
+        try {
+            for await (const msg of channels.receiveMessage) {
+                await this.handleMessage(msg)
+            }
+        } catch (ex) {
+            if (ex instanceof Error) {
+                this.logger.info('Received an error when async reading messages ' + ex.name + " " + ex.message)
+            }
         }
 
         this.logger.info('Runner ended')
@@ -221,10 +227,7 @@ export abstract class Instantiator {
     ): Promise<void> {
         const shape = discoveredShapes[proc.type.value]
         if (!shape) {
-            this.logger.error(
-                `Failed to find a shape definition for ${proc.id.value} (expects shape for ${proc.type.value})`,
-            )
-            throw 'No shape definition found'
+            throw `Failed to find a shape definition for ${collapseLast(proc.id.value)} (expects shape for ${collapseLast(proc.type.value)}). Try importing the processor or check for typos.`
         }
 
         const jsonld_document = shape.addToDocument(
@@ -265,8 +268,8 @@ export abstract class Instantiator {
 
         const processorIsInit = new Promise(
             (res) =>
-                (this.processorsStartupFns[proc.id.value] = () =>
-                    res(undefined)),
+            (this.processorsStartupFns[proc.id.value] = () =>
+                res(undefined)),
         )
         const jsonldDoc = jsonld_to_string(document)
 
@@ -283,7 +286,7 @@ export abstract class Instantiator {
 
     /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => {}
+        async () => { }
 }
 
 /**
@@ -326,7 +329,9 @@ export class CommandInstantiator extends Instantiator {
         const child = spawn('bash', ['-l', '-c', args])
 
         child.stdout.on('data', (data) => {
-            this.logger.info('From command ' + (<string>data.toString()).trim())
+            this.logger.debug(
+                'From command ' + (<string>data.toString()).trim(),
+            )
         })
 
         child.stderr.on('data', (data) => {

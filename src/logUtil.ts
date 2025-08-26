@@ -26,7 +26,7 @@ export const prefixFound: PrefixCallback = (prefix, node) => {
 
 const DEBUG_ENV = (process.env.DEBUG || '').toLowerCase()
 const LOG_LEVEL_ENV = process.env.LOG_LEVEL
-function collapse(node: string): string[] {
+export function collapse(node: string): string[] {
     const out = [new URL(node, urlBase).toString(), node]
     for (const pref of prefixes) {
         if (node.startsWith(pref.node)) {
@@ -34,6 +34,13 @@ function collapse(node: string): string[] {
         }
     }
     return out
+}
+export function collapseLast(node: string): string {
+    if (node.startsWith('<')) {
+        node = node.substring(1, node.length - 1)
+    }
+    const options = collapse(node)
+    return options[options.length - 1]
 }
 
 function getLogLevelFor(name: string[]) {

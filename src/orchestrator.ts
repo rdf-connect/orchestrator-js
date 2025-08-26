@@ -7,7 +7,12 @@
 import * as grpc from '@grpc/grpc-js'
 import { NamedNode, Writer } from 'n3'
 import { emptyPipeline, modelShapes, Pipeline, PipelineShape } from './model'
-import { getLoggerFor, reevaluteLevels, setPipelineFile } from './logUtil'
+import {
+    collapseLast,
+    getLoggerFor,
+    reevaluteLevels,
+    setPipelineFile,
+} from './logUtil'
 import { Definitions, parse_processors } from '.'
 import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
@@ -116,10 +121,65 @@ export class Orchestrator implements Callbacks {
                 JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
-            this.pipeline = PipelineShape.execute({
-                id: new NamedNode(pipeline),
-                quads,
-            })
+            try {
+                this.pipeline = PipelineShape.execute({
+                    id: new NamedNode(pipeline),
+                    quads,
+                })
+            } catch (ex: unknown) {
+                if (ex instanceof LensError) {
+                    const id = ex.lineage
+                        .filter((x) => x.name === 'id' || x.name === 'pred')
+                        .map((x) => <string>x.opts)
+                        .join(' -> ')
+                    const linReversed = ex.lineage.slice().reverse()
+                    this.logger.error('Error happend when parsing at ' + id)
+                    const lastPred = <string>(
+                        linReversed.find((x) => x.name === 'pred')?.opts
+                    )
+                    const lastId = <string>(
+                        linReversed.find((x) => x.name === 'id')?.opts
+                    )
+                    const foundSome = linReversed[0].name !== 'pred'
+                    const isType =
+                        lastPred ==
+                        '<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>'
+
+                    if (!foundSome) {
+                        if (isType) {
+                            this.logger.error(
+                                'Cannot find a type for ' +
+                                    collapseLast(lastId) +
+                                    ', maybe it does not exist. Try importing the object or check for typos.',
+                            )
+                        } else {
+                            this.logger.error(
+                                'No matching triples found for predicate ' +
+                                    collapseLast(lastPred) +
+                                    ' on subject ' +
+                                    collapseLast(lastId),
+                            )
+                            // this.logger.error(`Missing triple ${lastId} ${lastPred} ?? .`);
+                        }
+                    } else {
+                        const expectedType = linReversed.find(
+                            (x) => x.name === 'extracting class',
+                        )
+                        if (
+                            expectedType &&
+                            expectedType.opts ===
+                                'https://w3id.org/rdf-lens/ontology#TypedExtract'
+                        ) {
+                            this.logger.error(
+                                'Expected a type triple for ' +
+                                    collapseLast(lastId) +
+                                    ' but found none, maybe you refered to a not existing object. Try importing the object or check for typos.',
+                            )
+                        }
+                    }
+                }
+                throw ex
+            }
         } else {
             this.pipeline = pipeline
         }
@@ -181,8 +241,7 @@ export class Orchestrator implements Callbacks {
      *    c. Sends the pipeline configuration to the runner
      */
     async startInstantiators(addr: string, pipeline: string) {
-        this.logger.debug('Starting ' + this.pipeline.parts.length + ' runners')
-        await Promise.all(
+        const resolved = await Promise.allSettled(
             Object.values(this.pipeline.parts).map(async (part) => {
                 const r = part.instantiator
                 const prom = this.server.expectRunner(r)
@@ -191,6 +250,16 @@ export class Orchestrator implements Callbacks {
                 await r.sendPipeline(pipeline)
             }),
         )
+
+        const errors = resolved
+            .filter((x) => x.status == 'rejected')
+            .map((x) => x.reason)
+        if (errors.length > 0) {
+            for (const e of errors) {
+                this.logger.error(e)
+            }
+            process.exit(1)
+        }
     }
 
     /**
@@ -226,37 +295,28 @@ export class Orchestrator implements Callbacks {
                 this.pipeline.parts.map((x) => x.processors.length) +
                 ' processors',
         )
-        const errors = []
 
         const startPromises = []
         for (const part of this.pipeline.parts) {
             const runner = part.instantiator
             for (const procId of part.processors) {
-                try {
-                    this.logger.debug(
-                        `Adding processor ${procId.id.value} (${procId.type.value}) to runner ${runner.id.value}`,
-                    )
-                    startPromises.push(
-                        runner.addProcessor(
-                            procId,
-                            this.quads,
-                            this.definitions,
-                        ),
-                    )
-                } catch (ex) {
-                    errors.push(ex)
-                }
+                this.logger.debug(
+                    `Adding processor ${procId.id.value} (${procId.type.value}) to runner ${runner.id.value}`,
+                )
+                startPromises.push(
+                    runner.addProcessor(procId, this.quads, this.definitions),
+                )
             }
         }
 
-        await Promise.all(startPromises)
+        const errors = (await Promise.allSettled(startPromises))
+            .filter((x) => x.status === 'rejected')
+            .map((x) => x.reason)
 
         if (errors.length > 0) {
             for (const e of errors) {
                 this.logger.error(e)
-                console.error(e)
             }
-
             throw errors
         }
 
@@ -309,26 +369,17 @@ export async function start(location: string) {
 
     reevaluteLevels()
     logger.debug('Setting pipeline')
-    try {
-        orchestrator.setPipeline(quads, iri.toString())
-    } catch (ex: unknown) {
-        if (ex instanceof LensError) {
-            console.error(ex.message)
-            for (const lin of ex.lineage) {
-                console.error(lin.name, lin.opts)
-            }
-
-            process.exit(1)
-        }
-    }
+    orchestrator.setPipeline(quads, iri.toString())
 
     await orchestrator.startInstantiators(
         addr,
         new Writer().quadsToString(quads),
     )
+
     await orchestrator.startProcessors()
 
     await orchestrator.waitClose()
+
     grpcServer.tryShutdown((e) => {
         if (e !== undefined) {
             logger.error(e)

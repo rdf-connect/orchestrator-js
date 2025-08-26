@@ -108,11 +108,38 @@ export class Server {
                 }
                 this.logger.debug('Got identify message')
 
+                let closed = false
+                stream.on('end', () => (closed = true))
+                stream.on('close', () => (closed = true))
+                stream.on('error', (err) => {
+                    this.logger.debug(
+                        'Unexpected stream error: ' +
+                            err.name +
+                            ' ' +
+                            err.message,
+                    )
+                    closed = true
+                })
+
                 const write = promisify(stream.write.bind(stream))
+                const sendMessage: (
+                    msg: RunnerMessage,
+                ) => Promise<void> = async (msg) => {
+                    if (
+                        !closed &&
+                        !stream.cancelled &&
+                        !stream.writableFinished &&
+                        !stream.destroyed
+                    ) {
+                        await write(msg)
+                    } else {
+                        this.logger.debug('Cannot send message, stream closed')
+                    }
+                }
                 const runner = this.instantiators[msg.identify.uri]
 
                 runner.part.setChannel({
-                    sendMessage: <(msg: RunnerMessage) => Promise<void>>write,
+                    sendMessage,
                     receiveMessage: stream,
                 })
 
@@ -145,12 +172,23 @@ export class Server {
                 // Sending only message on the stream
                 await new Promise((res) => stream.write({ id: id }, res))
 
-                for await (const chunk of stream) {
-                    const c: DataChunk = chunk
-                    this.logger.debug('got chunk for stream ' + id)
-                    obj.done.push(c)
-                    for (const listener of obj.receivers) {
-                        await listener.data(c)
+                try {
+                    for await (const chunk of stream) {
+                        const c: DataChunk = chunk
+                        this.logger.debug('got chunk for stream ' + id)
+                        obj.done.push(c)
+                        for (const listener of obj.receivers) {
+                            await listener.data(c)
+                        }
+                    }
+                } catch (ex) {
+                    if (ex instanceof Error) {
+                        this.logger.debug(
+                            'Stream message stream closed:' +
+                                ex.name +
+                                ' ' +
+                                ex.message,
+                        )
                     }
                 }
 
@@ -213,10 +251,18 @@ export class Server {
              * 2. Routes each message to the appropriate logger
              */
             logStream: async (call) => {
-                for await (const chunk of call) {
-                    const msg: LogMessage = chunk
-                    const logger = getLoggerFor(msg.entities, msg.aliases)
-                    logger.log(msg.level, msg.msg)
+                try {
+                    for await (const chunk of call) {
+                        const msg: LogMessage = chunk
+                        const logger = getLoggerFor(msg.entities, msg.aliases)
+                        logger.log(msg.level, msg.msg)
+                    }
+                } catch (ex) {
+                    if (ex instanceof Error) {
+                        this.logger.debug(
+                            'Log stream closed: ' + ex.name + ' ' + ex.message,
+                        )
+                    }
                 }
             },
         }

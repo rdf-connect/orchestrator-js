@@ -16,6 +16,7 @@ import {
     SHACL,
     XSD,
 } from '@treecg/types'
+import { collapseLast } from './logUtil'
 
 /**
  * RDFL namespace with common RDF Lens terms.
@@ -398,19 +399,16 @@ function handleAccordingToProperty<T>(
     property: PropertyDTO,
     id: Term,
 ): T | T[] {
+    if (property.minCount !== undefined && property.minCount > ts.length) {
+        throw `Expected ${property.minCount} or more objects for property ${collapseLast(property.path.id.value)} (${property.name}) on ${collapseLast(id.value)} (found ${ts.length})`
+    }
+    if (property.maxCount !== undefined && property.maxCount < ts.length) {
+        throw `Expected ${property.maxCount} or less objects for property ${collapseLast(property.path.id.value)} (${property.name}) on ${collapseLast(id.value)} (found ${ts.length})`
+    }
+
     if (property.maxCount === undefined || property.maxCount > 1) {
         return ts
     } else {
-        if (ts.length > 1) {
-            console.error(
-                'Expected at most one item ',
-                property.name,
-                property.path.id.value,
-                'for',
-                id.value,
-            )
-        }
-
         return ts[0]
     }
 }
