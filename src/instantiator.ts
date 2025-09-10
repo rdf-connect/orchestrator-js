@@ -123,9 +123,9 @@ export abstract class Instantiator {
             if (ex instanceof Error) {
                 this.logger.info(
                     'Received an error when async reading messages ' +
-                        ex.name +
-                        ' ' +
-                        ex.message,
+                    ex.name +
+                    ' ' +
+                    ex.message,
                 )
             }
         }
@@ -164,13 +164,18 @@ export abstract class Instantiator {
 
     /**
      * Forwards a stream message to the runner if it handles the specified channel.
+     * Returns true if this instantiator has a reader for this channel
      * @param {StreamMessage} streamMsg - The stream message to forward
-     * @returns {Promise<void>}
+     * @returns {Promise<boolean>}
      */
-    async streamMessage(streamMsg: StreamMessage) {
+    async streamMessage(streamMsg: StreamMessage): Promise<boolean> {
         if (this.handlesChannels.has(streamMsg.channel)) {
             await this.sendMessage({ streamMsg })
+            return true
+        } else {
+            return false;
         }
+
     }
 
     /**
@@ -191,13 +196,6 @@ export abstract class Instantiator {
         if (msg.msg) {
             this.logger.debug('Runner handle data msg to ', msg.msg.channel)
             await this.orchestrator.msg(msg.msg)
-        }
-        if (msg.streamMsg) {
-            this.logger.debug(
-                'Runner handle stream data msg to ',
-                msg.streamMsg.channel,
-            )
-            await this.orchestrator.streamMessage(msg.streamMsg)
         }
         if (msg.close) {
             this.logger.debug('Runner handle close msg to ' + msg.close.channel)
@@ -273,8 +271,8 @@ export abstract class Instantiator {
 
         const processorIsInit = new Promise(
             (res) =>
-                (this.processorsStartupFns[proc.id.value] = () =>
-                    res(undefined)),
+            (this.processorsStartupFns[proc.id.value] = () =>
+                res(undefined)),
         )
         const jsonldDoc = jsonld_to_string(document)
 
@@ -291,7 +289,7 @@ export abstract class Instantiator {
 
     /** Function to send messages to the runner */
     protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => {}
+        async () => { }
 }
 
 /**
