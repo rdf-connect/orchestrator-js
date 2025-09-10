@@ -16,6 +16,7 @@ import {
 } from '@rdfc/proto'
 import { Instantiator } from './instantiator'
 import { getLoggerFor } from './logUtil'
+import { StreamChunk } from '@rdfc/proto/lib/generated/common'
 
 /**
  * Represents a receiver for streamed data chunks.
@@ -35,8 +36,9 @@ type Receiver = {
  * @property {Receiver[]} receivers - Registered receivers for this stream
  */
 type OpenStream = {
-    done: DataChunk[]
-    receivers: Receiver[]
+    receivers: Receiver[],
+    awaiting: number,
+    resolve: () => void,
 }
 
 /**
@@ -114,9 +116,9 @@ export class Server {
                 stream.on('error', (err) => {
                     this.logger.debug(
                         'Unexpected stream error: ' +
-                            err.name +
-                            ' ' +
-                            err.message,
+                        err.name +
+                        ' ' +
+                        err.message,
                     )
                     closed = true
                 })
@@ -152,42 +154,74 @@ export class Server {
              *
              * Process Flow:
              * 1. Creates a new stream with a unique ID
-             * 2. Sets up storage for stream data and receivers
-             * 3. Forwards received chunks to all registered receivers
-             * 4. Cleans up resources when the stream ends
+             * 2. Notifies all instantiators that a stream message is pending
+             * 3. Awaits for each instantiator that has a reader for that channel to connect
+             * 4. Notify writing instantiator to start sending data
+             * 5. Forwards received chunks to all registered receivers
+             * 6. Cleans up resources when the stream ends
              */
             sendStreamMessage: async (
-                stream: grpc.ServerDuplexStream<DataChunk, Id>,
+                stream: grpc.ServerDuplexStream<StreamChunk, Id>,
             ) => {
                 const id = this.streamMsgId
                 this.streamMsgId += 1
                 this.logger.debug('Openin stream with id ' + id)
 
-                const obj: OpenStream = {
-                    done: [],
-                    receivers: [],
+                // Get the actual identifier of the channel
+                const identify = <StreamChunk>await new Promise(res => stream.once("data", res));
+
+                if (!identify.id) {
+                    throw "no, expected first a stream identifier"
                 }
+
+                const uri = identify.id;
+
+                const obj: OpenStream = {
+                    receivers: [],
+                    awaiting: 0,
+                    resolve: () => { }
+                };
                 this.msgStreams[id] = obj
+
+                // Setup promise that resolves when awaiting is zero
+                const allConnected = new Promise(res => obj.resolve = () => res(null));
+
+                // connect with all runners
+                for (const i of Object.values(this.instantiators)) {
+                    // If this instantiator has a reader, increment the awaiting count
+                    // This is lowered in receiveStreamMessage
+                    const added = await i.part.streamMessage({
+                        channel: uri,
+                        id: { id }
+                    })
+
+                    if (added) {
+                        obj.awaiting += 1;
+                    }
+                }
+
+                await allConnected;
 
                 // Sending only message on the stream
                 await new Promise((res) => stream.write({ id: id }, res))
 
                 try {
                     for await (const chunk of stream) {
-                        const c: DataChunk = chunk
-                        this.logger.debug('got chunk for stream ' + id)
-                        obj.done.push(c)
-                        for (const listener of obj.receivers) {
-                            await listener.data(c)
+                        const c: StreamChunk = chunk
+                        if (c.data) {
+                            this.logger.debug('got chunk for stream ' + id)
+                            for (const listener of obj.receivers) {
+                                await listener.data(c.data)
+                            }
                         }
                     }
                 } catch (ex) {
                     if (ex instanceof Error) {
                         this.logger.debug(
                             'Stream message stream closed:' +
-                                ex.name +
-                                ' ' +
-                                ex.message,
+                            ex.name +
+                            ' ' +
+                            ex.message,
                         )
                     }
                 }
@@ -212,6 +246,8 @@ export class Server {
             /**
              * Handles outgoing data streams to runners.
              *
+             * TODO: Make sure the runners know that they should only start one receiveStreamingMessage and they should duplicate the chunks themselves for each processor that reads 
+             *
              * @param {grpc.ServerDuplexStream<Id, DataChunk>} call - Bidirectional stream call
              *
              * Process Flow:
@@ -229,16 +265,20 @@ export class Server {
                     call.end()
                     return
                 } else {
-                    this.logger.debug('Found open stream for id ' + id)
-                    for (let i = 0; i < obj.done.length; i++) {
-                        await write(obj.done[i])
-                    }
+                    this.logger.debug('Found open stream for id ' + id);
+
                     obj.receivers.push({
                         close: async () => {
                             call.end()
                         },
                         data: write,
                     })
+
+                    // This instantiator connected, so maybe produce data when all instantiators are connected
+                    obj.awaiting -= 1;
+                    if (obj.awaiting == 0) {
+                        obj.resolve();
+                    }
                 }
             },
             /**
