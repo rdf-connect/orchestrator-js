@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import { Server } from '../lib/server'
-import { Channels } from '../lib/runner'
 import { createAsyncIterable, expandQuads } from '../lib/util'
 import { OrchestratorMessage, RunnerMessage } from '@rdfc/proto'
 import {
-    Instantiator,
+    Channels,
     modelShapes,
     Orchestrator,
     TestInstantiator,
@@ -15,10 +14,6 @@ import { Cont, empty } from 'rdf-lens'
 
 const encoder = new TextEncoder()
 class TestServer extends Server {
-    expectInstantiator(runner: Instantiator): Promise<void> {
-        this.logger.info('Expecting runner')
-        return super.expectRunner(runner)
-    }
     connectRunners(): {
         [runnerId: string]: {
             msgs: RunnerMessage[]
@@ -26,7 +21,7 @@ class TestServer extends Server {
         }
     } {
         const out = {}
-        for (const runner of Object.values(this.instantiators)) {
+        for (const runner of Object.values(this.orchestrator.instantiators)) {
             const msgs: RunnerMessage[] = []
             const rs = createAsyncIterable<OrchestratorMessage>()
             const send = (msg: OrchestratorMessage) => {
@@ -36,8 +31,11 @@ class TestServer extends Server {
             out[runner.part.id.value] = { msgs, send }
 
             runner.part.setChannel({
-                sendMessage: async (msg) => {
-                    msgs.push(msg)
+                sendMessage: {
+                    write: async (msg) => {
+                        msgs.push(msg)
+                    },
+                    close: async () => { },
                 },
                 receiveMessage: <Channels['receiveMessage']>rs,
             })
@@ -48,8 +46,8 @@ class TestServer extends Server {
 }
 
 describe('Setup orchestrator', async () => {
-    const server = new TestServer()
-    const orchestrator = new Orchestrator(server)
+    const orchestrator = new Orchestrator()
+    const server = new TestServer(orchestrator)
     modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)
     const location = path.resolve('./pipeline.ttl')
@@ -121,11 +119,20 @@ describe('Setup orchestrator', async () => {
         await startingPromise
 
         // Try send message directly via orchestrator to <p1> which is part of runner1
-        await orchestrator.msg({
-            data: encoder.encode('Hello world'),
-            channel: 'http://example.org/c1',
-        })
+        const messagePromise = new Promise((res) =>
+            orchestrator.msg(
+                {
+                    data: encoder.encode('Hello world'),
+                    channel: 'http://example.org/c1',
+                    tick: 0,
+                },
+                () => res(null),
+            ),
+        )
 
+        orchestrator.processed({ tick: 0, uri: 'http://example.org/c1' })
+
+        await messagePromise
         await new Promise((res) => setTimeout(res, 20))
         expect(
             runnerDict['http://example.org/runner1'].msgs.length,
@@ -141,6 +148,7 @@ describe('Setup orchestrator', async () => {
             msg: {
                 data: encoder.encode('Hello world'),
                 channel: 'http://example.org/c2',
+                tick: 2,
             },
         })
 

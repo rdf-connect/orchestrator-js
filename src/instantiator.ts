@@ -15,42 +15,23 @@ import {
 import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
 import { Quad, Term } from '@rdfjs/types'
-import { ObjectReadable } from '@grpc/grpc-js/build/src/object-stream'
 import { Definitions } from './jsonld'
 import { SmallProc } from './model'
-import { jsonld_to_string, RDFC } from './util'
-import { collapseLast, getLoggerFor } from './logUtil'
+import { jsonld_to_string } from './util'
+import { getLoggerFor } from './logUtil'
 import { Logger } from 'winston'
 
-/**
- * Recursively walks through a JSON object and applies a callback to each object.
- * @param {unknown} obj - The object to walk through
- * @param {(value: { [id: string]: unknown }) => void} cb - Callback function to apply to each object
- */
-function walkJson(
-    obj: unknown,
-    cb: (value: { [id: string]: unknown }) => void,
-) {
-    if (obj && typeof obj === 'object') {
-        cb(<{ [id: string]: unknown }>obj) // Call function on the current object
-    }
-
-    if ((obj && typeof obj === 'object') || Array.isArray(obj)) {
-        for (const v of Object.values(obj)) {
-            walkJson(v, cb)
-        }
-    }
+export type Sender<T> = {
+    write: (msg: T) => Promise<unknown>
+    close: () => Promise<void>
 }
 
 /**
  * Defines the communication channels between runner and orchestrator.
- * @typedef {Object} Channels
- * @property {Function} sendMessage - Function to send messages to the runner
- * @property {ObjectReadable<OrchestratorMessage>} receiveMessage - Stream for receiving messages from the orchestrator
  */
 export type Channels = {
-    sendMessage: (msg: RunnerMessage) => Promise<void>
-    receiveMessage: ObjectReadable<OrchestratorMessage>
+    sendMessage: Sender<RunnerMessage>
+    receiveMessage: AsyncIterable<OrchestratorMessage>
 }
 
 /**
@@ -75,8 +56,6 @@ export abstract class Instantiator {
     readonly id: Term
     /** The type of processors this instantiator can handle */
     readonly handles: Term
-    /** Set of channel IRIs this runner is currently handling */
-    readonly handlesChannels: Set<string> = new Set()
     /** Promise that resolves when the runner ends */
     readonly endPromise: Promise<unknown>
     /** Logger instance for the runner */
@@ -87,6 +66,11 @@ export abstract class Instantiator {
     protected orchestrator: Orchestrator
     /** Callback for when the runner ends */
     private endCb!: (v: unknown) => unknown
+    /** Function to send messages to the runner */
+    protected sendMessage: Sender<RunnerMessage> = {
+        write: async () => {},
+        close: async () => {},
+    }
 
     /**
      * Creates a new Instantiator instance.
@@ -123,9 +107,9 @@ export abstract class Instantiator {
             if (ex instanceof Error) {
                 this.logger.info(
                     'Received an error when async reading messages ' +
-                    ex.name +
-                    ' ' +
-                    ex.message,
+                        ex.name +
+                        ' ' +
+                        ex.message,
                 )
             }
         }
@@ -140,7 +124,7 @@ export abstract class Instantiator {
      * @returns {Promise<void>}
      */
     async sendPipeline(pipeline: string) {
-        await this.sendMessage({ pipeline })
+        await this.sendMessage.write({ pipeline })
     }
 
     /**
@@ -148,18 +132,16 @@ export abstract class Instantiator {
      * @returns {Promise<void>}
      */
     async startProcessors() {
-        await this.sendMessage({ start: Empty })
+        await this.sendMessage.write({ start: Empty })
     }
 
     /**
      * Forwards a message to the runner if it handles the specified channel.
      * @param {Message} msg - The message to forward
-     * @returns {Promise<void>}
+     * @returns {boolean}
      */
-    async msg(msg: Message) {
-        if (this.handlesChannels.has(msg.channel)) {
-            await this.sendMessage({ msg })
-        }
+    msg(msg: Message): void {
+        this.sendMessage.write({ msg })
     }
 
     /**
@@ -168,14 +150,8 @@ export abstract class Instantiator {
      * @param {StreamMessage} streamMsg - The stream message to forward
      * @returns {Promise<boolean>}
      */
-    async streamMessage(streamMsg: StreamMessage): Promise<boolean> {
-        if (this.handlesChannels.has(streamMsg.channel)) {
-            await this.sendMessage({ streamMsg })
-            return true
-        } else {
-            return false;
-        }
-
+    streamMessage(streamMsg: StreamMessage): void {
+        this.sendMessage.write({ streamMsg })
     }
 
     /**
@@ -184,7 +160,7 @@ export abstract class Instantiator {
      * @returns {Promise<void>}
      */
     async close(close: Close) {
-        await this.sendMessage({ close })
+        await this.sendMessage.write({ close })
     }
 
     /**
@@ -195,12 +171,17 @@ export abstract class Instantiator {
     async handleMessage(msg: OrchestratorMessage): Promise<void> {
         if (msg.msg) {
             this.logger.debug('Runner handle data msg to ', msg.msg.channel)
-            await this.orchestrator.msg(msg.msg)
+            await this.orchestrator.msg(
+                msg.msg,
+                this.onMessageProcessedCb(msg.msg.tick, msg.msg.channel),
+            )
         }
+
         if (msg.close) {
             this.logger.debug('Runner handle close msg to ' + msg.close.channel)
             await this.orchestrator.close(msg.close)
         }
+
         if (msg.init) {
             this.logger.debug('Runner handle init msg for ' + msg.init.uri)
             if (msg.init.error) {
@@ -208,9 +189,30 @@ export abstract class Instantiator {
             }
             this.processorsStartupFns[msg.init.uri]()
         }
+
         if (msg.identify) {
             this.logger.error("Didn't expect identify message")
         }
+
+        if (msg.processed) {
+            this.logger.error(
+                'Got processed message! ' +
+                    msg.processed.uri +
+                    ' ' +
+                    msg.processed.tick,
+            )
+            this.orchestrator.processed(msg.processed)
+        }
+    }
+
+    onMessageProcessedCb(tick: number, uri: string): () => void {
+        const processedMsg: RunnerMessage = {
+            processed: {
+                tick,
+                uri,
+            },
+        }
+        return () => this.sendMessage.write(processedMsg)
     }
 
     /**
@@ -227,33 +229,8 @@ export abstract class Instantiator {
         proc: SmallProc,
         quads: Quad[],
         discoveredShapes: Definitions,
+        args: string,
     ): Promise<void> {
-        const shape = discoveredShapes[proc.type.value]
-        if (!shape) {
-            throw `Failed to find a shape definition for ${collapseLast(proc.id.value)} (expects shape for ${collapseLast(proc.type.value)}). Try importing the processor or check for typos.`
-        }
-
-        const jsonld_document = shape.addToDocument(
-            proc.id,
-            quads,
-            discoveredShapes,
-        )
-
-        walkJson(jsonld_document, (obj) => {
-            if (obj['@type'] && obj['@id'] && obj['@type'] === RDFC.Reader) {
-                const ids = Array.isArray(obj['@id'])
-                    ? obj['@id']
-                    : [obj['@id']]
-                for (const id of ids) {
-                    if (typeof id === 'string') {
-                        this.handlesChannels.add(id)
-                    }
-                }
-            }
-        })
-
-        const args = jsonld_to_string(jsonld_document)
-
         const processorShape = discoveredShapes[this.handles.value]
         if (processorShape === undefined) {
             const error = new Error(
@@ -271,12 +248,12 @@ export abstract class Instantiator {
 
         const processorIsInit = new Promise(
             (res) =>
-            (this.processorsStartupFns[proc.id.value] = () =>
-                res(undefined)),
+                (this.processorsStartupFns[proc.id.value] = () =>
+                    res(undefined)),
         )
         const jsonldDoc = jsonld_to_string(document)
 
-        await this.sendMessage({
+        await this.sendMessage.write({
             proc: {
                 uri: proc.id.value,
                 config: jsonldDoc,
@@ -286,10 +263,6 @@ export abstract class Instantiator {
 
         await processorIsInit
     }
-
-    /** Function to send messages to the runner */
-    protected sendMessage: (msg: RunnerMessage) => Promise<void> =
-        async () => { }
 }
 
 /**
@@ -408,9 +381,10 @@ export class TestInstantiator extends Instantiator {
         proc: SmallProc,
         quads: Quad[],
         discoveredShapes: Definitions,
+        args: string,
     ): Promise<void> {
         this.startedProcessors.push(proc.id.value)
-        const res = super.addProcessor(proc, quads, discoveredShapes)
+        const res = super.addProcessor(proc, quads, discoveredShapes, args)
         await res
     }
 }

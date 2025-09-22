@@ -348,6 +348,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         this.addToContext(out)
 
         for (const property of this.properties) {
+            // TODO: handle collections here as well
             const values = isNestedProperty(property)
                 ? [id]
                 : findMatchingObjects(quads, id, property)
@@ -442,7 +443,7 @@ function handleAccordingToProperty<T>(
     id: Term,
 ): T | T[] {
     if (property.minCount !== undefined && property.minCount > ts.length) {
-        throw `Expected ${property.minCount} or more objects for property ${collapseLast(property.path.id.value)} (${property.name}) on ${collapseLast(id.value)} (found ${ts.length})`
+        throw `Expected ${property.minCount} or more objects for property ${collapseLast(property.path.id.value)} (${property.name}) on ${collapseLast(id.value)} (found ${ts.length}) ${JSON.stringify(property)}`
     }
     if (property.maxCount !== undefined && property.maxCount < ts.length) {
         throw `Expected ${property.maxCount} or less objects for property ${collapseLast(property.path.id.value)} (${property.name}) on ${collapseLast(id.value)} (found ${ts.length})`
