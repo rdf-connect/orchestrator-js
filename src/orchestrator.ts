@@ -6,20 +6,38 @@
 
 import * as grpc from '@grpc/grpc-js'
 import { NamedNode, Writer } from 'n3'
-import { emptyPipeline, modelShapes, Pipeline, PipelineShape } from './model'
+import {
+    emptyPipeline,
+    modelShapes,
+    Pipeline,
+    PipelineShape,
+    SmallProc,
+} from './model'
 import {
     collapseLast,
     getLoggerFor,
     reevaluteLevels,
     setPipelineFile,
 } from './logUtil'
-import { Definitions, parse_processors } from '.'
-import { readQuads } from './util'
+import {
+    Channels,
+    Definitions,
+    Instantiator,
+    parse_processors,
+    Sender,
+    Server,
+} from '.'
+import { jsonld_to_string, RDFC, readQuads, walkJson } from './util'
 import { Quad } from '@rdfjs/types'
-import { Close, Message, RunnerService, StreamMessage } from '@rdfc/proto'
-import { Server } from './server'
+import { Close, Message, RunnerService } from '@rdfc/proto'
 import { Cont, empty, envReplace, LensError } from 'rdf-lens'
 import { pathToFileURL } from 'url'
+import {
+    DataChunk,
+    MessageProcessed,
+    StreamChunk,
+    StreamIdentify,
+} from '@rdfc/proto/lib/generated/common'
 
 /**
  * Defines the callback interface for handling messages and connection closures.
@@ -31,9 +49,10 @@ export type Callbacks = {
     /**
      * Handles incoming messages from runners.
      * @param {Message} msg - The received message
+     * @param {() => void} onEnd - Callback to be called when all receiving instantiator indicate the message has been handled
      * @returns {Promise<void>}
      */
-    msg: (msg: Message) => Promise<void>
+    msg: (msg: Message, onEnd: () => void) => Promise<void>
 
     /**
      * Handles connection closures.
@@ -60,9 +79,6 @@ export class Orchestrator implements Callbacks {
     /** Logger instance for this orchestrator */
     protected readonly logger = getLoggerFor([this])
 
-    /** The gRPC server instance */
-    server: Server
-
     /** Current pipeline configuration */
     pipeline: Pipeline = emptyPipeline
 
@@ -72,13 +88,30 @@ export class Orchestrator implements Callbacks {
     /** Processor definitions parsed from the pipeline */
     definitions: Definitions = {}
 
+    /** Message count, used for translation between instantiator tick and orchestrator tick */
+    protected messageCount = 0
+
     /**
-     * Creates a new Orchestrator instance.
-     * @param {Server} server - The gRPC server instance to use
+     * Maps the messageId to resolving promise cb
+     * Invoking the callback indicates the message is handled
      */
-    constructor(server: Server) {
-        this.server = server
-    }
+    protected runningMessages: { [id: number]: () => void } = {}
+
+    /**
+     * Maps the messageId to connecting streams promise cb
+     * Invoking the callback indicates the receiving stream handler is attached
+     */
+    protected connectingStreams: {
+        [id: number]: { promise: () => void; write: Sender<DataChunk> }
+    } = {}
+
+    readonly instantiators: {
+        [uri: string]: { part: Instantiator; promise: () => void }
+    } = {}
+
+    readonly channelToInstantiator: {
+        [uri: string]: Instantiator
+    } = {}
 
     /**
      * Sets the pipeline configuration from a URI.
@@ -118,7 +151,7 @@ export class Orchestrator implements Callbacks {
         }
         this.logger.debug(
             'Found definitions ' +
-                JSON.stringify(Object.keys(this.definitions)),
+            JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
             try {
@@ -149,15 +182,15 @@ export class Orchestrator implements Callbacks {
                         if (isType) {
                             this.logger.error(
                                 'Cannot find a type for ' +
-                                    collapseLast(lastId) +
-                                    ', maybe it does not exist. Try importing the object or check for typos.',
+                                collapseLast(lastId) +
+                                ', maybe it does not exist. Try importing the object or check for typos.',
                             )
                         } else {
                             this.logger.error(
                                 'No matching triples found for predicate ' +
-                                    collapseLast(lastPred) +
-                                    ' on subject ' +
-                                    collapseLast(lastId),
+                                collapseLast(lastPred) +
+                                ' on subject ' +
+                                collapseLast(lastId),
                             )
                             // this.logger.error(`Missing triple ${lastId} ${lastPred} ?? .`);
                         }
@@ -168,12 +201,12 @@ export class Orchestrator implements Callbacks {
                         if (
                             expectedType &&
                             expectedType.opts ===
-                                'https://w3id.org/rdf-lens/ontology#TypedExtract'
+                            'https://w3id.org/rdf-lens/ontology#TypedExtract'
                         ) {
                             this.logger.error(
                                 'Expected a type triple for ' +
-                                    collapseLast(lastId) +
-                                    ' but found none, maybe you refered to a not existing object. Try importing the object or check for typos.',
+                                collapseLast(lastId) +
+                                ' but found none, maybe you refered to a not existing object. Try importing the object or check for typos.',
                             )
                         }
                     }
@@ -205,26 +238,138 @@ export class Orchestrator implements Callbacks {
      * @param {Message} msg - The message to process
      * @returns {Promise<void>}
      */
-    async msg(msg: Message) {
+    async msg(msg: Message, onEnd: () => void): Promise<void> {
         this.logger.debug('Got data message for channel ' + msg.channel)
-        await Promise.all(
-            this.pipeline.parts.map((part) => part.instantiator.msg(msg)),
-        )
+
+        const tick = this.messageCount++
+        const translatedMessage: Message = {
+            channel: msg.channel,
+            data: msg.data,
+            tick,
+        }
+
+        const targetInstnatiator =
+            this.channelToInstantiator[translatedMessage.channel]
+        if (targetInstnatiator) {
+            this.runningMessages[tick] = onEnd
+            targetInstnatiator.msg(translatedMessage)
+        } else {
+            this.logger.error(
+                `Receiving msg for channel ${translatedMessage.channel} without a connected reader`,
+            )
+            onEnd()
+        }
     }
 
-    /**
-     * Handles streaming messages by forwarding them to all runners in the pipeline.
-     *
-     * @param {StreamMessage} msg - The stream message to process
-     * @returns {Promise<void>}
-     */
-    async streamMessage(msg: StreamMessage) {
-        this.logger.debug('Got data stream message for channel ' + msg.channel)
-        await Promise.all(
-            this.pipeline.parts.map((part) =>
-                part.instantiator.streamMessage(msg),
-            ),
-        )
+    processed(msg: MessageProcessed) {
+        const cb = this.runningMessages[msg.tick]
+        if (cb) {
+            cb()
+            delete this.runningMessages[msg.tick]
+        } else {
+            this.logger.error(
+                'Expected to find state for tick ' +
+                msg.tick +
+                ' has it already been handled?',
+            )
+        }
+    }
+
+    async startStreamMessage(streamIdentify: StreamIdentify): Promise<number> {
+        const tick = this.messageCount++
+
+        const sourceRunner = this.instantiators[streamIdentify.runner]
+        if (!sourceRunner) {
+            throw (
+                'Failed to find correct source runner with uri ' +
+                streamIdentify.runner
+            )
+        }
+
+        const targetInstantiator =
+            this.channelToInstantiator[streamIdentify.channel]
+        if (targetInstantiator) {
+            this.runningMessages[tick] = sourceRunner.part.onMessageProcessedCb(
+                streamIdentify.tick,
+                streamIdentify.channel,
+            )
+            const prom = new Promise(
+                (res) =>
+                (this.connectingStreams[tick] = {
+                    promise: () => res(null),
+                    write: { write: async () => { }, close: async () => { } },
+                }),
+            )
+
+            targetInstantiator.streamMessage({
+                channel: streamIdentify.channel,
+                id: tick,
+                tick: tick,
+            })
+            await prom
+        } else {
+            this.logger.error(
+                `Receiving stream message for channel ${streamIdentify.channel} without a connected reader`,
+            )
+            const onEnd = sourceRunner.part.onMessageProcessedCb(
+                streamIdentify.tick,
+                streamIdentify.channel,
+            )
+
+            this.connectingStreams[tick] = {
+                promise: () => { },
+                write: {
+                    write: async () => { },
+                    close: async () => {
+                        onEnd()
+                    },
+                },
+            }
+        }
+
+        return tick
+    }
+
+    async forwardStream(tick: number, stream: AsyncIterable<StreamChunk>) {
+        const obj = this.connectingStreams[tick]
+
+        for await (const chunk of stream) {
+            await obj.write.write(chunk.data!)
+        }
+
+        obj.write.close()
+    }
+
+    async connectingReceivingStream(id: number, write: Sender<DataChunk>) {
+        this.logger.info('connecting for stream message ' + id)
+        const obj = this.connectingStreams[id]
+        if (obj === undefined) {
+            this.logger.error('Expected a set up stream message with id ' + id)
+            return
+        }
+
+        obj.write = write
+        obj.promise()
+    }
+
+    async connectingRunner(uri: string, channels: Channels) {
+        const item = this.instantiators[uri]
+        if (item === undefined) {
+            this.logger.error('Unexpected runner with id ' + uri)
+            return
+        }
+
+        item.part.setChannel(channels)
+        item.promise()
+    }
+
+    expectRunner(instantiator: Instantiator): Promise<null> {
+        return new Promise((res) => {
+            this.instantiators[instantiator.id.value] = {
+                part: instantiator,
+                promise: () => res(null),
+            }
+        })
     }
 
     /**
@@ -244,7 +389,7 @@ export class Orchestrator implements Callbacks {
         const resolved = await Promise.allSettled(
             Object.values(this.pipeline.parts).map(async (part) => {
                 const r = part.instantiator
-                const prom = this.server.expectRunner(r)
+                const prom = this.expectRunner(r)
                 await r.start(addr)
                 await prom
                 await r.sendPipeline(pipeline)
@@ -274,6 +419,68 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    getArguments(
+        proc: SmallProc,
+        instantiator: Instantiator,
+        state: {
+            readers: Set<string>
+            writers: Set<string>
+        },
+    ): string {
+        const shape = this.definitions[proc.type.value]
+        if (!shape) {
+            throw `Failed to find a shape definition for ${collapseLast(proc.id.value)} (expects shape for ${collapseLast(proc.type.value)}). Try importing the processor or check for typos.`
+        }
+
+        const jsonld_document = shape.addToDocument(
+            proc.id,
+            this.quads,
+            this.definitions,
+        )
+
+        walkJson(jsonld_document, (obj) => {
+            if (obj['@type'] && obj['@id'] && obj['@type'] === RDFC.Reader) {
+                const ids = Array.isArray(obj['@id'])
+                    ? obj['@id']
+                    : [obj['@id']]
+                for (const id of ids) {
+                    if (typeof id === 'string') {
+                        this.channelToInstantiator[id] = instantiator
+                        // count it
+                        if (state.readers.has(id)) {
+                            throw new Error(
+                                `Only expected a single reader for channel ${collapseLast(id)}, but found multiple`,
+                            )
+                        } else {
+                            state.readers.add(id)
+                        }
+                    }
+                }
+            }
+
+            if (obj['@type'] && obj['@id'] && obj['@type'] === RDFC.Writer) {
+                const ids = Array.isArray(obj['@id'])
+                    ? obj['@id']
+                    : [obj['@id']]
+                for (const id of ids) {
+                    if (typeof id === 'string') {
+                        // count it
+                        if (state.writers.has(id)) {
+                            throw new Error(
+                                `Only expected a single writer for channel ${collapseLast(id)}, but found multiple`,
+                            )
+                        } else {
+                            state.writers.add(id)
+                        }
+                    }
+                }
+            }
+        })
+
+        const args = jsonld_to_string(jsonld_document)
+        return args
+    }
+
     /**
      * Initializes and starts all processors in the pipeline.
      *
@@ -292,19 +499,49 @@ export class Orchestrator implements Callbacks {
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
-                this.pipeline.parts.map((x) => x.processors.length) +
-                ' processors',
+            this.pipeline.parts.map((x) => x.processors.length) +
+            ' processors',
         )
 
         const startPromises = []
+
+        const state = {
+            readers: new Set<string>(),
+            writers: new Set<string>(),
+        }
+
         for (const part of this.pipeline.parts) {
             const runner = part.instantiator
             for (const procId of part.processors) {
                 this.logger.debug(
                     `Adding processor ${procId.id.value} (${procId.type.value}) to runner ${runner.id.value}`,
                 )
+
+                const args = this.getArguments(procId, runner, state)
                 startPromises.push(
-                    runner.addProcessor(procId, this.quads, this.definitions),
+                    runner.addProcessor(
+                        procId,
+                        this.quads,
+                        this.definitions,
+                        args,
+                    ),
+                )
+            }
+        }
+
+        // See if all channels are connected
+        if (state.readers != state.writers) {
+            for (const r of state.writers) {
+                if (!state.readers.delete(r)) {
+                    this.logger.error(
+                        `Writer ${collapseLast(r)} has no linked Reader.`,
+                    )
+                }
+            }
+
+            for (const r of state.readers) {
+                this.logger.error(
+                    `Reader ${collapseLast(r)} has no linked Writer.`,
                 )
             }
         }
@@ -349,10 +586,11 @@ export async function start(location: string) {
     const logger = getLoggerFor(['start'])
     const port = 50051
     const grpcServer = new grpc.Server()
-    const orchestrator = new Orchestrator(new Server())
+    const orchestrator = new Orchestrator()
+    const server = new Server(orchestrator)
     setupOrchestratorLens(orchestrator)
 
-    grpcServer.addService(RunnerService, orchestrator.server.server)
+    grpcServer.addService(RunnerService, server.server)
     await new Promise((res) =>
         grpcServer.bindAsync(
             '0.0.0.0:' + port,

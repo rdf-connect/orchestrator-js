@@ -15,7 +15,28 @@ export const RDFC = createNamespace(
     'https://w3id.org/rdf-connect#',
     (x) => x,
     'Reader',
+    'Writer',
 )
+
+/**
+ * Recursively walks through a JSON object and applies a callback to each object.
+ * @param {unknown} obj - The object to walk through
+ * @param {(value: { [id: string]: unknown }) => void} cb - Callback function to apply to each object
+ */
+export function walkJson(
+    obj: unknown,
+    cb: (value: { [id: string]: unknown }) => void,
+) {
+    if (obj && typeof obj === 'object') {
+        cb(<{ [id: string]: unknown }>obj) // Call function on the current object
+    }
+
+    if ((obj && typeof obj === 'object') || Array.isArray(obj)) {
+        for (const v of Object.values(obj)) {
+            walkJson(v, cb)
+        }
+    }
+}
 
 export function jsonld_to_string(document: Document): string
 export function jsonld_to_string(document: Document, context: Context): string

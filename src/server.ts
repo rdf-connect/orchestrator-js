@@ -7,39 +7,15 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import {
-    DataChunk,
     Id,
     LogMessage,
     OrchestratorMessage,
     RunnerMessage,
     RunnerServer,
 } from '@rdfc/proto'
-import { Instantiator } from './instantiator'
 import { getLoggerFor } from './logUtil'
 import { StreamChunk } from '@rdfc/proto/lib/generated/common'
-
-/**
- * Represents a receiver for streamed data chunks.
- * @typedef {Object} Receiver
- * @property {Function} data - Callback for handling incoming data chunks
- * @property {Function} close - Callback for handling stream closure
- */
-type Receiver = {
-    data: (chunk: DataChunk) => Promise<unknown>
-    close: () => Promise<unknown>
-}
-
-/**
- * Represents an open stream with its receivers and buffered data.
- * @typedef {Object} OpenStream
- * @property {DataChunk[]} done - Buffered chunks of data
- * @property {Receiver[]} receivers - Registered receivers for this stream
- */
-type OpenStream = {
-    receivers: Receiver[],
-    awaiting: number,
-    resolve: () => void,
-}
+import { Orchestrator } from './orchestrator'
 
 /**
  * gRPC Server implementation for handling runner connections and message routing.
@@ -52,23 +28,10 @@ export class Server {
     /** Counter for generating unique stream message IDs */
     protected streamMsgId = 0
 
-    /** Map of active message streams */
-    protected msgStreams: { [id: number]: OpenStream } = {}
-
     /** gRPC server instance */
     server: RunnerServer
 
-    /**
-     * Registry of all connected instantiators and their associated promises.
-     *
-     * @type {Object.<string, {part: Instantiator, promise: () => void}>}
-     * @property {Object} [instantiatorId] - Each key is a unique instantiator identifier (URI)
-     * @property {Instantiator} instantiatorId.part - The Instantiator instance handling the connection
-     * @property {() => void} instantiatorId.promise - Resolver function for the connection promise
-     */
-    readonly instantiators: {
-        [instantiatorId: string]: { part: Instantiator; promise: () => void }
-    } = {}
+    protected readonly orchestrator: Orchestrator
 
     /**
      * Creates a new Server instance and initializes the gRPC server handlers.
@@ -78,7 +41,8 @@ export class Server {
      * - receiveStreamMessage: Handles incoming data streams
      * - logStream: Processes log messages from runners
      */
-    constructor() {
+    constructor(orchestrator: Orchestrator) {
+        this.orchestrator = orchestrator
         this.server = {
             /**
              * Handles new runner connections.
@@ -116,9 +80,9 @@ export class Server {
                 stream.on('error', (err) => {
                     this.logger.debug(
                         'Unexpected stream error: ' +
-                        err.name +
-                        ' ' +
-                        err.message,
+                            err.name +
+                            ' ' +
+                            err.message,
                     )
                     closed = true
                 })
@@ -138,14 +102,17 @@ export class Server {
                         this.logger.debug('Cannot send message, stream closed')
                     }
                 }
-                const runner = this.instantiators[msg.identify.uri]
 
-                runner.part.setChannel({
-                    sendMessage,
+                const channels = {
+                    sendMessage: {
+                        write: sendMessage,
+                        close: async () => {
+                            stream.end()
+                        },
+                    },
                     receiveMessage: stream,
-                })
-
-                runner.promise()
+                }
+                this.orchestrator.connectingRunner(msg.identify.uri, channels)
             },
             /**
              * Handles incoming data streams from runners.
@@ -163,123 +130,41 @@ export class Server {
             sendStreamMessage: async (
                 stream: grpc.ServerDuplexStream<StreamChunk, Id>,
             ) => {
-                const id = this.streamMsgId
-                this.streamMsgId += 1
-                this.logger.debug('Openin stream with id ' + id)
-
                 // Get the actual identifier of the channel
-                const identify = <StreamChunk>await new Promise(res => stream.once("data", res));
+                const identify = <StreamChunk>(
+                    await new Promise((res) => stream.once('data', res))
+                )
 
                 if (!identify.id) {
-                    throw "no, expected first a stream identifier"
+                    throw 'no, expected first a stream identifier'
                 }
 
-                const uri = identify.id;
-
-                const obj: OpenStream = {
-                    receivers: [],
-                    awaiting: 0,
-                    resolve: () => { }
-                };
-                this.msgStreams[id] = obj
-
-                // Setup promise that resolves when awaiting is zero
-                const allConnected = new Promise(res => obj.resolve = () => res(null));
-
-                // connect with all runners
-                for (const i of Object.values(this.instantiators)) {
-                    // If this instantiator has a reader, increment the awaiting count
-                    // This is lowered in receiveStreamMessage
-                    const added = await i.part.streamMessage({
-                        channel: uri,
-                        id: { id }
-                    })
-
-                    if (added) {
-                        obj.awaiting += 1;
-                    }
-                }
-
-                await allConnected;
+                const id = await this.orchestrator.startStreamMessage(
+                    identify.id,
+                )
 
                 // Sending only message on the stream
                 await new Promise((res) => stream.write({ id: id }, res))
 
-                try {
-                    for await (const chunk of stream) {
-                        const c: StreamChunk = chunk
-                        if (c.data) {
-                            this.logger.debug('got chunk for stream ' + id)
-                            for (const listener of obj.receivers) {
-                                await listener.data(c.data)
-                            }
-                        }
-                    }
-                } catch (ex) {
-                    if (ex instanceof Error) {
-                        this.logger.debug(
-                            'Stream message stream closed:' +
-                            ex.name +
-                            ' ' +
-                            ex.message,
-                        )
-                    }
-                }
-
-                let c = obj.receivers.pop()
-                while (c !== undefined) {
-                    await c.close()
-                    c = obj.receivers.pop()
-                }
-
-                this.logger.debug(
-                    'data stream is finished, closing in 500ms ' + id,
-                )
-                setTimeout(() => {
-                    this.logger.debug('closing data stream ' + id)
-                    delete this.msgStreams[id]
-                    for (const receiver of obj.receivers) {
-                        receiver.close()
-                    }
-                }, 500)
+                await this.orchestrator.forwardStream(id, stream)
             },
             /**
              * Handles outgoing data streams to runners.
              *
-             * TODO: Make sure the runners know that they should only start one receiveStreamingMessage and they should duplicate the chunks themselves for each processor that reads 
-             *
-             * @param {grpc.ServerDuplexStream<Id, DataChunk>} call - Bidirectional stream call
-             *
-             * Process Flow:
-             * 1. Looks up the stream by ID
-             * 2. Sends any buffered data to the new receiver
-             * 3. Registers the receiver for future data chunks
-             * 4. Handles stream closure
+             * Notifies the orchestrator that a receiving message stream call is connected.
+             * When stream message is finished, close the stream.
              */
             receiveStreamMessage: async (call) => {
+                this.logger.info('Receive stream message ' + call.request.id)
                 const id = call.request.id
-                const obj = this.msgStreams[id]
                 const write = promisify(call.write.bind(call))
-                if (obj === undefined) {
-                    this.logger.error('No open streams found for', id)
-                    call.end()
-                    return
-                } else {
-                    this.logger.debug('Found open stream for id ' + id);
 
-                    obj.receivers.push({
-                        close: async () => {
-                            call.end()
-                        },
-                        data: write,
-                    })
-
-                    // This instantiator connected, so maybe produce data when all instantiators are connected
-                    obj.awaiting -= 1;
-                    if (obj.awaiting == 0) {
-                        obj.resolve();
-                    }
-                }
+                this.orchestrator.connectingReceivingStream(id, {
+                    write,
+                    close: async () => {
+                        call.end()
+                    },
+                })
             },
             /**
              * Processes log messages from runners.
@@ -306,15 +191,5 @@ export class Server {
                 }
             },
         }
-    }
-
-    /// Tell the server to expect a runner to connect, returning a promise that resolves when this happens
-    expectRunner(runner: Instantiator): Promise<void> {
-        return new Promise((res) => {
-            this.instantiators[runner.id.value] = {
-                part: runner,
-                promise: () => res(),
-            }
-        })
     }
 }
