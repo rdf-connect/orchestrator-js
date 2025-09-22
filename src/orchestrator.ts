@@ -92,23 +92,25 @@ export class Orchestrator implements Callbacks {
     protected messageCount = 0
 
     /**
-     * Maps the messageId to resolving promise cb
-     * Invoking the callback indicates the message is handled
+     * Maps the messageId to resolving promise callback functions.
+     * Invoking the callback indicates the message has been handled
      */
     protected runningMessages: { [id: number]: () => void } = {}
 
     /**
-     * Maps the messageId to connecting streams promise cb
+     * Maps the messageId to connecting streams promise callbacks.
      * Invoking the callback indicates the receiving stream handler is attached
      */
     protected connectingStreams: {
         [id: number]: { promise: () => void; write: Sender<DataChunk> }
     } = {}
 
+    /** Maps runner URIs to their instantiator instances and promise resolution callbacks */
     readonly instantiators: {
         [uri: string]: { part: Instantiator; promise: () => void }
     } = {}
 
+    /** Maps channel URIs to their target instantiator instances for message routing */
     readonly channelToInstantiator: {
         [uri: string]: Instantiator
     } = {}
@@ -151,7 +153,7 @@ export class Orchestrator implements Callbacks {
         }
         this.logger.debug(
             'Found definitions ' +
-            JSON.stringify(Object.keys(this.definitions)),
+                JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
             try {
@@ -182,15 +184,15 @@ export class Orchestrator implements Callbacks {
                         if (isType) {
                             this.logger.error(
                                 'Cannot find a type for ' +
-                                collapseLast(lastId) +
-                                ', maybe it does not exist. Try importing the object or check for typos.',
+                                    collapseLast(lastId) +
+                                    ', maybe it does not exist. Try importing the object or check for typos.',
                             )
                         } else {
                             this.logger.error(
                                 'No matching triples found for predicate ' +
-                                collapseLast(lastPred) +
-                                ' on subject ' +
-                                collapseLast(lastId),
+                                    collapseLast(lastPred) +
+                                    ' on subject ' +
+                                    collapseLast(lastId),
                             )
                             // this.logger.error(`Missing triple ${lastId} ${lastPred} ?? .`);
                         }
@@ -201,12 +203,12 @@ export class Orchestrator implements Callbacks {
                         if (
                             expectedType &&
                             expectedType.opts ===
-                            'https://w3id.org/rdf-lens/ontology#TypedExtract'
+                                'https://w3id.org/rdf-lens/ontology#TypedExtract'
                         ) {
                             this.logger.error(
                                 'Expected a type triple for ' +
-                                collapseLast(lastId) +
-                                ' but found none, maybe you refered to a not existing object. Try importing the object or check for typos.',
+                                    collapseLast(lastId) +
+                                    ' but found none, maybe you refered to a not existing object. Try importing the object or check for typos.',
                             )
                         }
                     }
@@ -261,16 +263,26 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Handles message processing completion notifications.
+     * Called when a message has been processed by the target instantiators.
+     *
+     * @param {MessageProcessed} msg - The message processing notification
+     * @returns {void}
+     */
     processed(msg: MessageProcessed) {
         const cb = this.runningMessages[msg.tick]
         if (cb) {
             cb()
+            this.logger.info(
+                'Succesfully processed message with tick ' + msg.tick,
+            )
             delete this.runningMessages[msg.tick]
         } else {
             this.logger.error(
                 'Expected to find state for tick ' +
-                msg.tick +
-                ' has it already been handled?',
+                    msg.tick +
+                    ' has it already been handled?',
             )
         }
     }
@@ -295,10 +307,10 @@ export class Orchestrator implements Callbacks {
             )
             const prom = new Promise(
                 (res) =>
-                (this.connectingStreams[tick] = {
-                    promise: () => res(null),
-                    write: { write: async () => { }, close: async () => { } },
-                }),
+                    (this.connectingStreams[tick] = {
+                        promise: () => res(null),
+                        write: { write: async () => {}, close: async () => {} },
+                    }),
             )
 
             targetInstantiator.streamMessage({
@@ -317,9 +329,9 @@ export class Orchestrator implements Callbacks {
             )
 
             this.connectingStreams[tick] = {
-                promise: () => { },
+                promise: () => {},
                 write: {
-                    write: async () => { },
+                    write: async () => {},
                     close: async () => {
                         onEnd()
                     },
@@ -330,6 +342,13 @@ export class Orchestrator implements Callbacks {
         return tick
     }
 
+    /**
+     * Forwards streaming data chunks from source to target through the connecting stream.
+     *
+     * @param {number} tick - The message tick ID for the stream
+     * @param {AsyncIterable<StreamChunk>} stream - The stream of data chunks to forward
+     * @returns {Promise<void>}
+     */
     async forwardStream(tick: number, stream: AsyncIterable<StreamChunk>) {
         const obj = this.connectingStreams[tick]
 
@@ -340,6 +359,14 @@ export class Orchestrator implements Callbacks {
         obj.write.close()
     }
 
+    /**
+     * Establishes a connection for receiving streaming data.
+     * Links the stream writer to the connecting stream identified by the message tick.
+     *
+     * @param {number} id - The message tick ID for the stream connection
+     * @param {Sender<DataChunk>} write - The sender for writing data chunks to the stream
+     * @returns {Promise<void>}
+     */
     async connectingReceivingStream(id: number, write: Sender<DataChunk>) {
         this.logger.info('connecting for stream message ' + id)
         const obj = this.connectingStreams[id]
@@ -352,6 +379,14 @@ export class Orchestrator implements Callbacks {
         obj.promise()
     }
 
+    /**
+     * Establishes communication channels for a connected runner.
+     * Sets up the runner's channel configuration and completes the connection promise.
+     *
+     * @param {string} uri - The URI of the runner to connect
+     * @param {Channels} channels - The communication channels for the runner
+     * @returns {Promise<void>}
+     */
     async connectingRunner(uri: string, channels: Channels) {
         const item = this.instantiators[uri]
         if (item === undefined) {
@@ -363,6 +398,13 @@ export class Orchestrator implements Callbacks {
         item.promise()
     }
 
+    /**
+     * Creates a promise that resolves when the specified instantiator connects.
+     * Used to wait for runner initialization before proceeding with pipeline setup.
+     *
+     * @param {Instantiator} instantiator - The instantiator instance to wait for
+     * @returns {Promise<null>} A promise that resolves when the instantiator connects
+     */
     expectRunner(instantiator: Instantiator): Promise<null> {
         return new Promise((res) => {
             this.instantiators[instantiator.id.value] = {
@@ -419,6 +461,19 @@ export class Orchestrator implements Callbacks {
         )
     }
 
+    /**
+     * Generates configuration arguments for a processor based on its RDF definition.
+     * Creates a JSON-LD document with the processor configuration and tracks channel mappings.
+     *
+     * @param {SmallProc} proc - The processor configuration to generate arguments for
+     * @param {Instantiator} instantiator - The instantiator that will run the processor
+     * @param {Object} state - Object tracking reader/writer channel mappings
+     * @param {Set<string>} state.readers - Set of reader channel URIs
+     * @param {Set<string>} state.writers - Set of writer channel URIs
+     * @returns {string} JSON-LD string containing the processor configuration
+     * @throws {Error} If the processor shape definition is not found
+     * @throws {Error} If multiple readers or writers are assigned to the same channel
+     */
     getArguments(
         proc: SmallProc,
         instantiator: Instantiator,
@@ -499,8 +554,8 @@ export class Orchestrator implements Callbacks {
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
-            this.pipeline.parts.map((x) => x.processors.length) +
-            ' processors',
+                this.pipeline.parts.map((x) => x.processors.length) +
+                ' processors',
         )
 
         const startPromises = []
@@ -629,7 +684,13 @@ export async function start(location: string) {
     })
 }
 
-// Maps rdfc:Orchestrator to this orchestrator
+/**
+ * Sets up the RDF lens mapping for the Orchestrator class.
+ * Maps the rdfc:Orchestrator RDF type to this orchestrator instance for RDF processing.
+ *
+ * @param {Orchestrator} orchestrator - The orchestrator instance to map
+ * @returns {void}
+ */
 function setupOrchestratorLens(orchestrator: Orchestrator) {
     modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)

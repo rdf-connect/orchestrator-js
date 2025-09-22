@@ -25,11 +25,8 @@ export class Server {
     /** Logger instance for the server */
     protected logger = getLoggerFor([this])
 
-    /** Counter for generating unique stream message IDs */
-    protected streamMsgId = 0
-
     /** gRPC server instance */
-    server: RunnerServer
+    readonly server: RunnerServer
 
     protected readonly orchestrator: Orchestrator
 

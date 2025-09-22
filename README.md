@@ -53,24 +53,9 @@ The orchestrator can be run using the provided CLI:
 ```bash
 # Run with a pipeline configuration
 node bin/orchestrator.js path/to/your/pipeline.ttl
-
-# Or using the installed binary (if installed globally)
-rdfc path/to/your/pipeline.ttl
 ```
 
-### Programmatic API
-
-```typescript
-import { Orchestrator } from '@rdfc/orchestrator-js'
-
-// Initialize with your configuration
-const orchestrator = new Orchestrator({
-    // Configuration options
-})
-
-// Start the orchestrator
-await orchestrator.start()
-```
+The CLI tool loads the RDF pipeline configuration, starts the gRPC server, spawns the configured runners, initializes processors, and manages the entire pipeline lifecycle.
 
 ## Configuration
 
@@ -79,6 +64,7 @@ Pipeline configurations are defined using RDF/Turtle format. Here's an example c
 ```turtle
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
 @prefix owl: <http://www.w3.org/2002/07/owl#>.
+
 
 ### Import runners and processors
 <> owl:imports <./.venv/lib/python3.13/site-packages/rdfc_runner/index.ttl>.
@@ -166,65 +152,32 @@ orchestrator-js/
 │   └── orchestrator.js   # Main CLI entry point and pipeline executor
 ├── lib/                  # Compiled JavaScript output
 ├── src/                  # TypeScript source files
-│   ├── index.ts          # Main export
+│   ├── index.ts          # Main export file
 │   ├── instantiator.ts   # Runner instantiation logic
-│   ├── jsonld.ts         # JSON-LD utilities
+│   ├── jsonld.ts         # JSON-LD utilities and RDF processing
+│   ├── jsonld.ttl        # JSON-LD processor definitions
 │   ├── logUtil.ts        # Logging utilities
 │   ├── model.ts          # Data models and types
+│   ├── model.ttl         # RDF model definitions
 │   ├── orchestrator.ts   # Core orchestrator logic
-│   ├── server.ts         # Server implementation
-│   └── util.ts           # Utility functions
+│   ├── server.ts         # gRPC server implementation
+│   ├── util.ts           # Utility functions
+│   ├── pipeline.ttl      # Pipeline configuration schema
+│   └── minimal.ttl       # Minimal example configuration
 ├── __tests__/            # Test files
-├── package.json          # Project configuration
-└── tsconfig.json         # TypeScript configuration
-```
-
-## API Reference
-
-### Orchestrator
-
-The main class that manages the pipeline execution.
-
-```typescript
-interface OrchestratorOptions {
-    configPath?: string // Path to RDF configuration
-    logger?: Logger // Custom logger instance
-    // Additional options...
-}
-
-class Orchestrator {
-    constructor(options: OrchestratorOptions)
-
-    // Start the orchestrator
-    start(): Promise<void>
-
-    // Stop the orchestrator
-    stop(): Promise<void>
-
-    // Get current status
-    getStatus(): OrchestratorStatus
-}
-```
-
-### Runner
-
-Handles the execution of processing tasks.
-
-```typescript
-interface RunnerOptions {
-    id: string // Unique runner ID
-    // Runner configuration...
-}
-
-class Runner {
-    constructor(options: RunnerOptions)
-
-    // Start the runner
-    start(): Promise<void>
-
-    // Execute a processing task
-    execute(task: Task): Promise<Result>
-}
+│   ├── orchestrator.test.ts
+│   ├── jsonld_derive.test.ts
+│   ├── config.ttl
+│   └── ...
+├── .github/              # GitHub workflows and templates
+├── .husky/               # Git hooks
+├── package.json          # Project configuration and dependencies
+├── tsconfig.json         # TypeScript configuration
+├── jest.config.js        # Jest test configuration
+├── eslint.config.mjs     # ESLint configuration
+├── .prettierrc          # Prettier configuration
+├── .editorconfig         # Editor configuration
+└── README.md             # This file
 ```
 
 ## Contributing
@@ -284,23 +237,39 @@ sequenceDiagram
     participant O as Orchestrator
     participant R as Runner
     participant P as Processor
-    Note over O: Discovered Runners<br>and processors
-    loop For every runner
-        Note over R: Runner is started with cli
-        O-->>R: Startup with address and uri
-        R-->>O: RPC.Identify: with uri
+
+    Note over O: Initialize gRPC server on port 50051
+    O->>O: Create server with orchestrator
+
+    Note over O: Load and parse RDF pipeline configuration
+
+    O->>O: startInstantiators(addr, pipeline)
+    loop For each instantiator in pipeline
+        O->>O: expectRunner(instantiator)
+        Note over O: Create promise to wait for runner connection
+        O->>R: Spawn runner process with address
+        R->>O: gRPC Connect with identify message
+        O->>O: Resolve runner connection promise
+        O->>R: Send pipeline configuration
     end
-    loop For every processor
-        O-->>R: RPC.Processor: Start processor
-        Note over P: Load module and class
-        R-->>P: Load processor
-        R-->>P: Start processor with args
-        R-->>O: RPC.ProcessorInit: processor started
+
+    Note over O: Initialize all processors
+    loop For each processor in each runner
+        O->>O: expectProcessor(instantiator)
+        Note over O: Generate JSON-LD configuration for processor
+        O->>R: addProcessor with configuration
+        R->>P: Initialize processor
+        P->>R: Processor ready
+        R->>O: init message with processor URI
+        O->>O: Resolve processor startup promise
     end
-    loop For every runner
-        O-->>R: RPC.Start: Start
-        loop For every processor
-            R-->>P: Start
+
+    Note over O: Start all runners
+    O->>O: waitClose()
+    loop For each runner
+        O->>R: Start message
+        loop For each processor in runner
+            R->>P: Start processor execution
         end
     end
 ```
@@ -312,16 +281,31 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant P1 as Processor 1
-    participant R1 as Runner 1
-    participant O as Orchestrator
-    participant R2 as Runner 2
-    participant P2 as Processor 2
-    P1-->>R1: Msg to Channel A
-    R1-->>O: Msg to Channel A
-    Note over O: Channel A is connected<br>to processor of Runner 2
-    O -->> R2: Msg to Channel A
-    R2-->>P2: Msg to Channel A
+    autonumber
+    participant P1 as Processor 1<br/>Type: Writer
+    participant R1 as Runner 1<br/>Channel A Writer
+    participant O as Orchestrator<br/>Message Router
+    participant R2 as Runner 2<br/>Channel A Reader
+    participant P2 as Processor 2<br/>Type: Reader
+
+    Note over P1: Processor generates message for Channel A
+    P1->>R1: Message with data for Channel A
+    Note over R1: Runner forwards message to orchestrator
+    R1->>O: gRPC Message(msg)
+
+    Note over O: Orchestrator routes message to target instantiator
+    O->>O: Look up channelToInstantiator[Channel A]
+    O->>O: Create translated message with tick
+    O->>R2: gRPC Message(translated_msg)
+
+    Note over R2: Runner forwards message to target processor
+    R2->>P2: Process message from Channel A
+
+    Note over P2: Processor finishes processing
+    P2->>R2: Processing complete
+    R2->>O: gRPC Processed(tick, channel)
+    O->>O: Clean up message state
+    O->>R1: Message processing completed
 ```
 
 </details>
@@ -332,28 +316,38 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant P1 as Processor 1
-    participant R1 as Runner 1
-    participant O as Orchestrator
-    participant R2 as Runner 2
-    participant P2 as Processor 2
-    P1 -->> R1: Send streaming<br>message
-    critical Start stream message
-        R1 ->> O: rpc.sendStreamMessage<br>(bidirectional stream)
-        O -->> R1: sends generated ID<br>of stream message
-        R1 -->> O: announce StreamMessage<br>with ID over normal stream
+    participant P1 as Processor 1<br/>Stream Writer
+    participant R1 as Runner 1<br/>Source Runner
+    participant O as Orchestrator<br/>Stream Manager
+    participant R2 as Runner 2<br/>Target Runner
+    participant P2 as Processor 2<br/>Stream Reader
 
-        O -->> R2: announce StreamMessage<br>with ID over normal stream
-        R2 ->> O: rpc.receiveMessage with Id<br>starts receiving stream
-        R2 -->> P2: incoming stream message
-    end
+    Note over P1: Processor initiates streaming message
+    P1->>R1: Request to start streaming to Channel B
+    R1->>O: gRPC startStreamMessage(identify)
+    Note over O: Orchestrator generates unique stream ID
+    O->>O: Create tick ID for stream tracking
+    O->>R1: Return stream ID
 
-    loop Streams data
-        P1 -->> R1: Data chunks
-        R1 -->> O: Data chunks over stream
-        O -->> R2: Data chunks over stream
-        R2 -->>P2: Data chunks
-    end
+    Note over O: Set up stream routing between runners
+    O->>O: Register connectingStreams[tick]
+    O->>R2: gRPC streamMessage(id, tick)
+    R2->>O: gRPC connectingReceivingStream(id)
+    O->>O: Link stream writer to connecting stream
+    O->>R1: Stream ready for data
+
+    Note over P1: Begin streaming data
+    P1->>R1: Stream data chunks
+    R1->>O: StreamChunk data via gRPC stream
+    O->>R2: StreamChunk data via gRPC stream
+    R2->>P2: Forward data chunks to processor
+
+    Note over P1: Streaming completed
+    P1->>R1: End of stream
+    R1->>O: Stream closed
+    O->>R2: Stream closed
+    R2->>P2: Stream processing complete
+    O->>O: Clean up stream state
 ```
 
 </details>
