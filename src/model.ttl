@@ -81,8 +81,20 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:Reader.
+  sh:targetClass rdfc:Reader;
+  sh:property [
+    sh:path rdfc:logLevel;
+    sh:name "logLevel";
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:Writer.
+  sh:targetClass rdfc:Writer;
+  sh:property [
+    sh:path rdfc:logLevel;
+    sh:name "logLevel";
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
 

@@ -1,7 +1,6 @@
 /**
  * Test utilities for orchestrator testing
  */
-import { OrchestratorMessage, RunnerMessage } from '@rdfc/proto'
 import { createAsyncIterable } from '../lib/util'
 import { Server } from '../lib/server'
 import { expandQuads, Orchestrator, TestInstantiator } from '../lib'
@@ -9,6 +8,7 @@ import { Cont, empty } from 'rdf-lens'
 import { modelShapes } from '../lib/model'
 import path from 'path'
 import { Parser } from 'n3'
+import { FromRunner, ToRunner } from '@rdfc/proto'
 
 /**
  * Test server that provides controlled access to runner communication
@@ -27,13 +27,13 @@ export class TestOrchestratorServer extends Server {
      * Connect a test runner with controlled messaging
      */
     connectTestRunner(runnerId: string): RunnerTestConnection {
-        const messages: RunnerMessage[] = []
-        const messageStream = createAsyncIterable<OrchestratorMessage>()
+        const messages: ToRunner[] = []
+        const messageStream = createAsyncIterable<FromRunner>()
 
         const connection: RunnerTestConnection = {
             runnerId,
             messages,
-            sendMessage: async (msg: RunnerMessage) => {
+            sendMessage: async (msg: ToRunner) => {
                 messages.push(msg)
             },
             receiveMessages: messageStream,
@@ -49,16 +49,15 @@ export class TestOrchestratorServer extends Server {
             empty<Cont>().map(() => this.orchestrator)
 
         // Set up the channel for the runner
-        const runner = this.orchestrator.instantiators[runnerId]
-        if (runner) {
-            runner.part.setChannel({
+        const runnerConnected = this.orchestrator.onConnectingRunners[runnerId]
+        if (runnerConnected) {
+            runnerConnected({
                 sendMessage: {
                     write: connection.sendMessage,
                     close: connection.close,
                 },
                 receiveMessage: connection.receiveMessages,
             })
-            runner.promise()
         }
 
         return connection
@@ -70,9 +69,9 @@ export class TestOrchestratorServer extends Server {
  */
 export interface RunnerTestConnection {
     runnerId: string
-    messages: RunnerMessage[]
-    sendMessage: (msg: RunnerMessage) => Promise<void>
-    receiveMessages: AsyncIterable<OrchestratorMessage>
+    messages: ToRunner[]
+    sendMessage: (msg: ToRunner) => Promise<void>
+    receiveMessages: AsyncIterable<FromRunner>
     close: () => Promise<void>
 }
 
@@ -186,19 +185,22 @@ export class OrchestratorTestFixture {
         channel: string,
         data: string,
         from: string,
-        tick: number = 0,
+        localSequenceNumber: number = 0,
     ): Promise<void> {
         const encoder = new TextEncoder()
         const instantiator = this.orchestrator.pipeline.parts.find(
             (x) => x.instantiator.id.value === from,
         )!.instantiator
 
-        const onEnd = instantiator.onMessageProcessedCb(tick, channel)
+        const onEnd = instantiator.onMessageProcessedCb(
+            localSequenceNumber,
+            channel,
+        )
         await this.orchestrator.msg(
             {
                 data: encoder.encode(data),
                 channel,
-                tick,
+                localSequenceNumber: localSequenceNumber,
             },
             onEnd,
         )
@@ -207,7 +209,10 @@ export class OrchestratorTestFixture {
     /**
      * Simulate message processing completion
      */
-    simulateMessageProcessed(tick: number, channel: string): void {
-        this.orchestrator.processed({ tick, uri: channel })
+    simulateMessageProcessed(
+        globalSequenceNumber: number,
+        channel: string,
+    ): void {
+        this.orchestrator.processed({ globalSequenceNumber, channel })
     }
 }

@@ -5,7 +5,6 @@ A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing
 ## Table of Contents
 
 - [Features](#features)
-- [Installation](#installation)
 - [Usage](#usage)
     - [CLI](#cli)
     - [Programmatic API](#programmatic-api)
@@ -27,23 +26,6 @@ A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing
 - 🧪 **Test Coverage**: Comprehensive test suite with Vitest
 - 🛠️ **Developer Tools**: ESLint and Prettier for code quality
 
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/rdf-connect/orchestrator-js.git
-cd orchestrator-js
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Run tests
-npm test
-```
-
 ## Usage
 
 ### CLI
@@ -51,8 +33,10 @@ npm test
 The orchestrator can be run using the provided CLI:
 
 ```bash
+# Install the orchestrator
+npm install @rdfc/orchestrator-js
 # Run with a pipeline configuration
-node bin/orchestrator.js path/to/your/pipeline.ttl
+npx rdfc path/to/your/pipeline.ttl
 ```
 
 The CLI tool loads the RDF pipeline configuration, starts the gRPC server, spawns the configured runners, initializes processors, and manages the entire pipeline lifecycle.
@@ -72,7 +56,8 @@ Pipeline configurations are defined using RDF/Turtle format. Here's an example c
 
 
 ### Define the channels
-<channel> a rdfc:Writer, rdfc:Reader.
+<channel> a rdfc:Writer, rdfc:Reader;
+    rdfc:logLevel "DEBUG". # optional, log messages to debug
 
 
 ### Define the pipeline
@@ -175,7 +160,7 @@ orchestrator-js/
 ├── tsconfig.json         # TypeScript configuration
 ├── jest.config.js        # Jest test configuration
 ├── eslint.config.mjs     # ESLint configuration
-├── .prettierrc          # Prettier configuration
+├── .prettierrc           # Prettier configuration
 ├── .editorconfig         # Editor configuration
 └── README.md             # This file
 ```
@@ -201,13 +186,6 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/) for commi
 - `refactor`: Code refactoring
 - `test`: Adding or modifying tests
 - `chore`: Build process or auxiliary tool changes
-
-Example:
-
-```
-feat: add user authentication
-fix: resolve memory leak in processor
-```
 
 ## License
 
@@ -238,7 +216,7 @@ sequenceDiagram
     participant R as Runner
     participant P as Processor
 
-    Note over O: Initialize gRPC server on port 50051
+    Note over O: Initialize gRPC server on port 50051 (by default)
     O->>O: Create server with orchestrator
 
     Note over O: Load and parse RDF pipeline configuration
@@ -260,12 +238,11 @@ sequenceDiagram
         O->>R: addProcessor with configuration
         R->>P: Initialize processor
         P->>R: Processor ready
-        R->>O: init message with processor URI
+        R->>O: Initialized message with processor URI
         O->>O: Resolve processor startup promise
     end
 
     Note over O: Start all runners
-    O->>O: waitClose()
     loop For each runner
         O->>R: Start message
         loop For each processor in runner
@@ -291,21 +268,21 @@ sequenceDiagram
     Note over P1: Processor generates message for Channel A
     P1->>R1: Message with data for Channel A
     Note over R1: Runner forwards message to orchestrator
-    R1->>O: gRPC Message(msg)
+    R1->>O: gRPC SendingMessage(localSequenceNumber, channel, msg)
 
     Note over O: Orchestrator routes message to target instantiator
-    O->>O: Look up channelToInstantiator[Channel A]
-    O->>O: Create translated message with tick
-    O->>R2: gRPC Message(translated_msg)
+    O->>O: Look up channelToInstantiator[channel]
+    O->>O: Create translated localSequenceNumber to globalSequenceNumber
+    O->>R2: gRPC ReceivingMessage(globalSequenceNumber, channel, msg)
 
     Note over R2: Runner forwards message to target processor
     R2->>P2: Process message from Channel A
 
     Note over P2: Processor finishes processing
     P2->>R2: Processing complete
-    R2->>O: gRPC Processed(tick, channel)
+    R2->>O: gRPC GlobalAck(globalSequenceNumber, channel)
     O->>O: Clean up message state
-    O->>R1: Message processing completed
+    O->>R1: gRPC LocalAck(localSequenceNumber, channel)
 ```
 
 </details>
@@ -324,30 +301,33 @@ sequenceDiagram
 
     Note over P1: Processor initiates streaming message
     P1->>R1: Request to start streaming to Channel B
-    R1->>O: gRPC startStreamMessage(identify)
-    Note over O: Orchestrator generates unique stream ID
-    O->>O: Create tick ID for stream tracking
-    O->>R1: Return stream ID
+    R1->>O: gRPC startStreamMessage(identify: (localSequenceNumber, channel, runner))
+    O->>R1: Return chunk awknoledged
 
     Note over O: Set up stream routing between runners
-    O->>O: Register connectingStreams[tick]
-    O->>R2: gRPC streamMessage(id, tick)
-    R2->>O: gRPC connectingReceivingStream(id)
+    O->>O: Register connectingStreams[globalSequenceNumber]
+    O->>R2: gRPC ReceivingStreamMessage(globalSequenceNumber, global)
+    R2->>O: gRPC connectingReceivingStream(globalSequenceNumber)
     O->>O: Link stream writer to connecting stream
-    O->>R1: Stream ready for data
+    O->>R1: Sends stream control - ReceivingStreamControl{streamSequenceNumber}
+
 
     Note over P1: Begin streaming data
-    P1->>R1: Stream data chunks
-    R1->>O: StreamChunk data via gRPC stream
-    O->>R2: StreamChunk data via gRPC stream
-    R2->>P2: Forward data chunks to processor
+    loop For Each Chunk
+        P1->>R1: Stream data chunks
+        R1->>O: sendStreamMessage() - StreamChunk{data: DataChunk(bytes)}
+        O->>R2: receiveStreamMessage() - DataChunk(bytes)
+        R2->>P2: Forward data chunks to processor
+        P2->>R2: Chunk handled
+        R2->>O: chunk handled - SendingStreamControl{streamSequenceNumber}
+        O->>R1: chunk handled - ReceivingStreamControl{streamSequenceNumber}
+    end
 
-    Note over P1: Streaming completed
     P1->>R1: End of stream
     R1->>O: Stream closed
     O->>R2: Stream closed
-    R2->>P2: Stream processing complete
-    O->>O: Clean up stream state
+    R2->>O: FromRunnner{processed: GlobalAck(globalSequenceNumber, channel)}
+    O->>R1: ToRunner{processed: LocalAck(localSequenceNumber, channel)}
 ```
 
 </details>
