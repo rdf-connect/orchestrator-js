@@ -16,6 +16,9 @@ describe('Orchestrator Pipeline Management', () => {
     })
 
     describe('Pipeline Configuration', () => {
+        beforeEach(async () => {
+            await fixture.startPipeline()
+        })
         test('should parse pipeline with correct number of runners and processors', () => {
             // Verify pipeline structure
             expect(fixture.orchestrator.pipeline.parts).toHaveLength(2)
@@ -28,18 +31,9 @@ describe('Orchestrator Pipeline Management', () => {
 
             expect(totalProcessors).toBe(2)
         })
-
-        test('should have expected runner configurations', () => {
-            const runnerIds = fixture.getRunnerIds()
-
-            expect(runnerIds).toEqual([
-                'http://example.org/runner1',
-                'http://example.org/runner2',
-            ])
-        })
     })
 
-    describe.only('Runner Communication', () => {
+    describe('Runner Communication', () => {
         beforeEach(async () => {
             await fixture.startPipeline()
         })

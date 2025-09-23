@@ -7,10 +7,10 @@
 import {
     Close,
     Empty,
-    Message,
-    OrchestratorMessage,
-    RunnerMessage,
-    StreamMessage,
+    FromRunner,
+    ReceivingMessage,
+    ReceivingStreamMessage,
+    ToRunner,
 } from '@rdfc/proto'
 import { Orchestrator } from './orchestrator'
 import { spawn } from 'child_process'
@@ -23,15 +23,15 @@ import { Logger } from 'winston'
 
 export type Sender<T> = {
     write: (msg: T) => Promise<unknown>
-    close: () => Promise<void>
+    close: () => void | Promise<void>
 }
 
 /**
  * Defines the communication channels between runner and orchestrator.
  */
 export type Channels = {
-    sendMessage: Sender<RunnerMessage>
-    receiveMessage: AsyncIterable<OrchestratorMessage>
+    sendMessage: Sender<ToRunner>
+    receiveMessage: AsyncIterable<FromRunner>
 }
 
 /**
@@ -56,18 +56,14 @@ export abstract class Instantiator {
     readonly id: Term
     /** The type of processors this instantiator can handle */
     readonly handles: Term
-    /** Promise that resolves when the runner ends */
-    readonly endPromise: Promise<unknown>
     /** Logger instance for the runner */
     protected logger: Logger
     /** Map of processor IDs to their startup functions */
     protected processorsStartupFns: { [id: string]: () => void } = {}
     /** Reference to the parent orchestrator */
     protected orchestrator: Orchestrator
-    /** Callback for when the runner ends */
-    private endCb!: (v: unknown) => unknown
     /** Function to send messages to the runner */
-    protected sendMessage: Sender<RunnerMessage> = {
+    protected sendMessage: Sender<ToRunner> = {
         write: async () => {},
         close: async () => {},
     }
@@ -79,7 +75,6 @@ export abstract class Instantiator {
     constructor(config: InstantiatorConfig) {
         Object.assign(this, config)
         this.logger = getLoggerFor([this.id.value, this])
-        this.endPromise = new Promise((res) => (this.endCb = res))
     }
 
     /**
@@ -115,7 +110,6 @@ export abstract class Instantiator {
         }
 
         this.logger.info('Runner ended')
-        this.endCb(undefined)
     }
 
     /**
@@ -137,21 +131,21 @@ export abstract class Instantiator {
 
     /**
      * Forwards a message to the runner if it handles the specified channel.
-     * @param {Message} msg - The message to forward
+     * @param {ReceivingMessage} msg - The message to forward
      * @returns {boolean}
      */
-    msg(msg: Message): void {
-        this.sendMessage.write({ msg })
+    async msg(msg: ReceivingMessage): Promise<void> {
+        await this.sendMessage.write({ msg })
     }
 
     /**
      * Forwards a stream message to the runner if it handles the specified channel.
      * Returns true if this instantiator has a reader for this channel
-     * @param {StreamMessage} streamMsg - The stream message to forward
+     * @param {ReceivingStreamMessage} streamMsg - The stream message to forward
      * @returns {Promise<boolean>}
      */
-    streamMessage(streamMsg: StreamMessage): void {
-        this.sendMessage.write({ streamMsg })
+    async streamMessage(streamMsg: ReceivingStreamMessage): Promise<void> {
+        await this.sendMessage.write({ streamMsg })
     }
 
     /**
@@ -159,21 +153,24 @@ export abstract class Instantiator {
      * @param {Close} close - Close message details
      * @returns {Promise<void>}
      */
-    async close(close: Close) {
+    async close(close: Close): Promise<void> {
         await this.sendMessage.write({ close })
     }
 
     /**
      * Handles incoming messages from the runner and routes them to the appropriate handler.
-     * @param {OrchestratorMessage} msg - The message to handle
+     * @param {FromRunner} msg - The message to handle
      * @returns {Promise<void>}
      */
-    async handleMessage(msg: OrchestratorMessage): Promise<void> {
+    async handleMessage(msg: FromRunner): Promise<void> {
         if (msg.msg) {
             this.logger.debug('Runner handle data msg to ', msg.msg.channel)
             await this.orchestrator.msg(
                 msg.msg,
-                this.onMessageProcessedCb(msg.msg.tick, msg.msg.channel),
+                this.onMessageProcessedCb(
+                    msg.msg.localSequenceNumber,
+                    msg.msg.channel,
+                ),
             )
         }
 
@@ -182,12 +179,13 @@ export abstract class Instantiator {
             await this.orchestrator.close(msg.close)
         }
 
-        if (msg.init) {
-            this.logger.debug('Runner handle init msg for ' + msg.init.uri)
-            if (msg.init.error) {
-                this.logger.error('Init message error ' + msg.init.error)
+        if (msg.initialized) {
+            const init = msg.initialized
+            this.logger.debug('Runner handle init msg for ' + init.uri)
+            if (init.error) {
+                this.logger.error('Init message error ' + init.error)
             }
-            this.processorsStartupFns[msg.init.uri]()
+            this.processorsStartupFns[init.uri]()
         }
 
         if (msg.identify) {
@@ -195,24 +193,25 @@ export abstract class Instantiator {
         }
 
         if (msg.processed) {
-            this.logger.error(
-                'Got processed message! ' +
-                    msg.processed.uri +
-                    ' ' +
-                    msg.processed.tick,
-            )
-            this.orchestrator.processed(msg.processed)
+            await this.orchestrator.processed(msg.processed)
         }
     }
 
-    onMessageProcessedCb(tick: number, uri: string): () => void {
-        const processedMsg: RunnerMessage = {
+    // Returns a callback that should be called when the message has been handled
+    // This forwards the processed message to the runner
+    onMessageProcessedCb(
+        localSequenceNumber: number,
+        channel: string,
+    ): () => Promise<void> {
+        const processedMsg: ToRunner = {
             processed: {
-                tick,
-                uri,
+                localSequenceNumber,
+                channel,
             },
         }
-        return () => this.sendMessage.write(processedMsg)
+        return async () => {
+            await this.sendMessage.write(processedMsg)
+        }
     }
 
     /**
@@ -222,6 +221,7 @@ export abstract class Instantiator {
      * @param {SmallProc} proc - The processor to start
      * @param {Quad[]} quads - RDF quads containing processor configuration
      * @param {Definitions} discoveredShapes - Available shape definitions
+     * @param {string} args - serialized JSON-LD object representing the arguments of the processor
      * @returns {Promise<void>}
      * @throws {Error} If no shape definition is found for the processor
      */
@@ -359,7 +359,7 @@ export class TestInstantiator extends Instantiator {
         )
         for (const uri of this.startedProcessors) {
             this.logger.info('Start processors ' + uri)
-            await this.handleMessage({ init: { uri } })
+            await this.handleMessage({ initialized: { uri } })
         }
     }
 
@@ -370,6 +370,7 @@ export class TestInstantiator extends Instantiator {
      * @param {SmallProc} proc - The processor to add
      * @param {Quad[]} quads - RDF quads containing processor configuration
      * @param {Definitions} discoveredShapes - Available shape definitions
+     * @param {string} args - serialized JSON-LD object representing the arguments of the processor
      * @returns {Promise<void>} Resolves when the processor is added
      *
      * Process Flow:
@@ -384,7 +385,6 @@ export class TestInstantiator extends Instantiator {
         args: string,
     ): Promise<void> {
         this.startedProcessors.push(proc.id.value)
-        const res = super.addProcessor(proc, quads, discoveredShapes, args)
-        await res
+        await super.addProcessor(proc, quads, discoveredShapes, args)
     }
 }

@@ -6,15 +6,14 @@
 
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
-import {
-    Id,
-    LogMessage,
-    OrchestratorMessage,
-    RunnerMessage,
-    RunnerServer,
-} from '@rdfc/proto'
+import { FromRunner, LogMessage, RunnerServer, ToRunner } from '@rdfc/proto'
 import { getLoggerFor } from './logUtil'
-import { StreamChunk } from '@rdfc/proto/lib/generated/common'
+import {
+    DataChunk,
+    ReceivingStreamControl,
+    SendingStreamControl,
+    StreamChunk,
+} from '@rdfc/proto/lib/generated/common'
 import { Orchestrator } from './orchestrator'
 
 /**
@@ -44,7 +43,7 @@ export class Server {
             /**
              * Handles new runner connections.
              *
-             * @param {grpc.ServerDuplexStream<OrchestratorMessage, RunnerMessage>} stream - Bidirectional stream for communication
+             * @param {grpc.ServerDuplexStream<FromRunner, ToRunner>} stream - Bidirectional stream for communication
              * @throws {Error} If the first message is not an identify message
              *
              * Process Flow:
@@ -53,12 +52,9 @@ export class Server {
              * 3. Resolves the runner's connection promise
              */
             connect: async (
-                stream: grpc.ServerDuplexStream<
-                    OrchestratorMessage,
-                    RunnerMessage
-                >,
+                stream: grpc.ServerDuplexStream<FromRunner, ToRunner>,
             ) => {
-                const msg = <OrchestratorMessage>(
+                const msg = <FromRunner>(
                     await new Promise((res) => stream.once('data', res))
                 )
                 if (!msg.identify) {
@@ -85,9 +81,9 @@ export class Server {
                 })
 
                 const write = promisify(stream.write.bind(stream))
-                const sendMessage: (
-                    msg: RunnerMessage,
-                ) => Promise<void> = async (msg) => {
+                const sendMessage: (msg: ToRunner) => Promise<void> = async (
+                    msg,
+                ) => {
                     if (
                         !closed &&
                         !stream.cancelled &&
@@ -109,23 +105,27 @@ export class Server {
                     },
                     receiveMessage: stream,
                 }
-                this.orchestrator.connectingRunner(msg.identify.uri, channels)
+                this.orchestrator.connectRunner(msg.identify.uri, channels)
             },
             /**
              * Handles incoming data streams from runners.
              *
-             * @param {grpc.ServerDuplexStream<DataChunk, Id>} stream - Bidirectional stream for data transfer
+             * @param {grpc.ServerDuplexStream<StreamChunk, ReceivingStreamControl>} stream - Bidirectional stream for data transfer
              *
              * Process Flow:
              * 1. Creates a new stream with a unique ID
-             * 2. Notifies all instantiators that a stream message is pending
+             * 2. Notifies the receiving runner that a stream message is pending
              * 3. Awaits for each instantiator that has a reader for that channel to connect
-             * 4. Notify writing instantiator to start sending data
+             * 4. Notify writing runner to start sending data
              * 5. Forwards received chunks to all registered receivers
-             * 6. Cleans up resources when the stream ends
+             * 6. For each chunk forward the processed control message back to the sending runner
+             * 7. Cleans up resources when the stream ends
              */
             sendStreamMessage: async (
-                stream: grpc.ServerDuplexStream<StreamChunk, Id>,
+                stream: grpc.ServerDuplexStream<
+                    StreamChunk,
+                    ReceivingStreamControl
+                >,
             ) => {
                 // Get the actual identifier of the channel
                 const identify = <StreamChunk>(
@@ -133,17 +133,12 @@ export class Server {
                 )
 
                 if (!identify.id) {
-                    throw 'no, expected first a stream identifier'
+                    throw new Error(
+                        'The first message of a sending stream message must be a stream identifier',
+                    )
                 }
 
-                const id = await this.orchestrator.startStreamMessage(
-                    identify.id,
-                )
-
-                // Sending only message on the stream
-                await new Promise((res) => stream.write({ id: id }, res))
-
-                await this.orchestrator.forwardStream(id, stream)
+                await this.orchestrator.startStreamMessage(identify.id, stream)
             },
             /**
              * Handles outgoing data streams to runners.
@@ -151,28 +146,30 @@ export class Server {
              * Notifies the orchestrator that a receiving message stream call is connected.
              * When stream message is finished, close the stream.
              */
-            receiveStreamMessage: async (call) => {
-                this.logger.info('Receive stream message ' + call.request.id)
-                const id = call.request.id
-                const write = promisify(call.write.bind(call))
+            receiveStreamMessage: async (
+                call: grpc.ServerDuplexStream<SendingStreamControl, DataChunk>,
+            ) => {
+                const ctrl = <SendingStreamControl>(
+                    await new Promise((res) => call.once('data', res))
+                )
+                if (ctrl.globalSequenceNumber === undefined) {
+                    throw 'Expected identifying control message as first message of stream message, identifying which stream it wants to receive'
+                }
+                const id = ctrl.globalSequenceNumber!
+                this.logger.debug('Receive stream message ' + id)
 
-                this.orchestrator.connectingReceivingStream(id, {
-                    write,
-                    close: async () => {
-                        call.end()
-                    },
-                })
+                this.orchestrator.onReceivingStreamConnected(id, call)
             },
             /**
              * Processes log messages from runners.
-             *
-             * @param {grpc.ServerReadableStream<LogMessage>} call - Stream of log messages
              *
              * Process Flow:
              * 1. Iterates through incoming log messages
              * 2. Routes each message to the appropriate logger
              */
-            logStream: async (call) => {
+            logStream: async (
+                call: grpc.ServerReadableStream<LogMessage, null>,
+            ) => {
                 try {
                     for await (const chunk of call) {
                         const msg: LogMessage = chunk
