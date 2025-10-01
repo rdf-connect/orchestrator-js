@@ -158,6 +158,14 @@ describe('Extract processor correctly', () => {
   ].
 
 [] a sh:NodeShape;
+  sh:targetClass ex:Collection;
+  sh:property [
+    sh:name "numbers";
+    sh:path ex:number;
+    sh:datatype xsd:integer;
+  ].
+
+[] a sh:NodeShape;
   sh:targetClass ex:Nested;
   sh:property [
     sh:name "foobar";
@@ -213,6 +221,9 @@ ex:simple a ex:SimpleShape;
     ex:string "43";
     ex:iri ex:fourtyThree;
   ].
+
+ex:collection a ex:Collection;
+    ex:number ( 1 2 3 ).
 `
 
     const config_quads = parse_quads(config)
@@ -257,7 +268,7 @@ ex:simple a ex:SimpleShape;
         string: '42',
         iri: 'http://example.org/ns#fourtyTwo',
         nested: {
-            '@id': '_:n3-46',
+            '@id': '_:n3-48',
             '@type': 'http://example.org/ns#SimpleShape',
             '@context': simpleShapeContext,
             string: '43',
@@ -338,7 +349,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-46',
+                '@id': '_:n3-48',
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -367,14 +378,26 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-
 <http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
 <http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
 `
-
-        console.log(quads_str)
-        console.log(eql_to)
-
         check_quads_are_equal(
             new Parser().parse(quads_str),
             new Parser().parse(eql_to),
         )
+    })
+
+    test('Can parse collection', async () => {
+        const document = getDocument(EX + 'collection', EX + 'Collection')
+        console.log(document)
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#collection',
+            '@type': 'http://example.org/ns#Collection',
+            '@context': {
+                numbers: {
+                    '@id': 'http://example.org/ns#number',
+                    '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                },
+            },
+            numbers: [1, 2, 3],
+        })
     })
 
     test('cannot parse invalid shape', async () => {
