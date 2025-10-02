@@ -386,7 +386,6 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-
 
     test('Can parse collection', async () => {
         const document = getDocument(EX + 'collection', EX + 'Collection')
-        console.log(document)
         expect(document).toEqual({
             '@id': 'http://example.org/ns#collection',
             '@type': 'http://example.org/ns#Collection',

@@ -180,8 +180,8 @@ export abstract class Definition {
         const out: Document = isNest
             ? {}
             : {
-                '@id': actualId,
-            }
+                  '@id': actualId,
+              }
         return out // }
     }
 }
@@ -206,7 +206,7 @@ export class CBDDefinition extends Definition {
      * No-op implementation for adding to context (handled by PlainDefinition).
      * @override
      */
-    addToContext(): void { }
+    addToContext(): void {}
 
     /**
      * Converts RDF quads to a JSON-LD document using CBD algorithm.
@@ -232,7 +232,7 @@ export class CBDDefinition extends Definition {
                 out[t.predicate.value] = []
             }
 
-            ; (<Document[]>out[t.predicate.value]).push(
+            ;(<Document[]>out[t.predicate.value]).push(
                 this.addToDocument(t.object, quads, others, isNest, true),
             )
         }
@@ -286,7 +286,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 if (property.datatype) {
                     obj['@type'] =
                         property.datatype.value ===
-                            'http://www.w3.org/2001/XMLSchema#iri'
+                        'http://www.w3.org/2001/XMLSchema#iri'
                             ? '@id'
                             : property.datatype.value
                 }
