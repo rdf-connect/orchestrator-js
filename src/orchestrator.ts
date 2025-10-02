@@ -18,7 +18,7 @@ import { readQuads } from './util'
 import { Quad } from '@rdfjs/types'
 import { Close, Message, RunnerService, StreamMessage } from '@rdfc/proto'
 import { Server } from './server'
-import { Cont, empty, LensError } from 'rdf-lens'
+import { Cont, empty, envReplace, LensError } from 'rdf-lens'
 import { pathToFileURL } from 'url'
 
 /**
@@ -365,7 +365,8 @@ export async function start(location: string) {
     logger.info('Grpc server is bound! ' + addr)
     const iri = pathToFileURL(location)
     setPipelineFile(iri)
-    const quads = await readQuads([iri.toString()])
+    let quads = await readQuads([iri.toString()])
+    quads = envReplace().execute(quads)
 
     reevaluteLevels()
     logger.debug('Setting pipeline')

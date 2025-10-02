@@ -5,7 +5,7 @@
  * for working with RDF data in a more structured way.
  */
 
-import { NamedNode, Quad, Term } from '@rdfjs/types'
+import { NamedNode, Quad, Quad_Object, Term } from '@rdfjs/types'
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { BasicLens, Cont, extractShapes, match, subject } from 'rdf-lens'
 import { Parser } from 'n3'
@@ -350,13 +350,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         for (const property of this.properties) {
             const values = isNestedProperty(property)
                 ? [id]
-                : quads
-                      .filter(
-                          (x) =>
-                              x.subject.equals(id) &&
-                              x.predicate.equals(property.path.id),
-                      )
-                      .map((x) => x.object)
+                : findMatchingObjects(quads, id, property)
 
             if (property.clazz) {
                 this.handleClazzProperty(
@@ -388,6 +382,54 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
 
         return out
     }
+}
+
+function findMatchingObjectsFromCollection(
+    quads: Quad[],
+    id: Term,
+): Quad_Object[] {
+    const out: Quad_Object[] = []
+    while (!id.equals(RDF.terms.nil)) {
+        const value = quads.find(
+            (q) => q.subject.equals(id) && q.predicate.equals(RDF.terms.first),
+        )?.object
+        if (value === undefined) {
+            throw 'No RDF:first on quad ' + id.value
+        }
+
+        const rest = quads.find(
+            (q) => q.subject.equals(id) && q.predicate.equals(RDF.terms.rest),
+        )?.object
+        if (rest === undefined) {
+            throw 'No RDF:rest on quad ' + id.value
+        }
+
+        out.push(value)
+        id = rest
+    }
+    return out
+}
+
+function findMatchingObjects(
+    quads: Quad[],
+    id: Term,
+    property: PropertyDTO,
+): Quad_Object[] {
+    return quads
+        .filter(
+            (x) => x.subject.equals(id) && x.predicate.equals(property.path.id),
+        )
+        .map((x) => x.object)
+        .flatMap((object) => {
+            try {
+                // Check if it is a collection
+                return findMatchingObjectsFromCollection(quads, object)
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            } catch (ex: unknown) {
+                // Else it is not
+                return [object]
+            }
+        })
 }
 
 function handleAccordingToDatatype(inp: string, datatype: Term) {

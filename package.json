@@ -1,6 +1,6 @@
 {
     "name": "@rdfc/orchestrator-js",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "main": "index.js",
     "type": "module",
     "bin": {
@@ -68,7 +68,7 @@
     },
     "dependencies": {
         "@grpc/grpc-js": "^1.12.6",
-        "@rdfc/proto": "^0.1.2-alpha-1",
+        "@rdfc/proto": "0.1.2-alpha-1",
         "@treecg/types": "^0.4.6",
         "jsonld-streaming-parser": "^5.0.0",
         "jszip": "^3.10.1",
