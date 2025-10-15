@@ -302,7 +302,7 @@ sequenceDiagram
     Note over P1: Processor initiates streaming message
     P1->>R1: Request to start streaming to Channel B
     R1->>O: gRPC startStreamMessage(identify: (localSequenceNumber, channel, runner))
-    O->>R1: Return chunk awknoledged
+    O->>R1: Return chunk acknowledged
 
     Note over O: Set up stream routing between runners
     O->>O: Register connectingStreams[globalSequenceNumber]
