@@ -134,10 +134,10 @@ npm run format
 ```
 orchestrator-js/
 ├── bin/                  # Executable scripts
-│   └── orchestrator.js   # Main CLI entry point and pipeline executor
+│   └── orchestrator.js   # mainStream CLI entry point and pipeline executor
 ├── lib/                  # Compiled JavaScript output
 ├── src/                  # TypeScript source files
-│   ├── index.ts          # Main export file
+│   ├── index.ts          # mainStream export file
 │   ├── instantiator.ts   # Runner instantiation logic
 │   ├── jsonld.ts         # JSON-LD utilities and RDF processing
 │   ├── jsonld.ttl        # JSON-LD processor definitions
@@ -216,35 +216,45 @@ sequenceDiagram
     participant R as Runner
     participant P as Processor
 
-    Note over O: Initialize gRPC server on port 50051 (by default)
-    O->>O: Create server with orchestrator
-
-    Note over O: Load and parse RDF pipeline configuration
+    Note over O: Initialize gRPC server on port 50051 (by default)<br>Load and parse RDF pipeline configuration
 
     O->>O: startInstantiators(addr, pipeline)
     loop For each instantiator in pipeline
         O->>O: expectRunner(instantiator)
         Note over O: Create promise to wait for runner connection
         O->>R: Spawn runner process with address
-        R->>O: gRPC Connect with identify message
+        rect rgba(255, 0, 0, .1)
+            R->>O: stub.connect() as mainStream
+        end
+        rect rgba(0, 0, 255, .1)
+            R->>O: mainStream(FromRunner{identify: RunnerIdentify{ uri }})
+        end
         O->>O: Resolve runner connection promise
-        O->>R: Send pipeline configuration
+        rect rgba(0, 0, 255, .1)
+            O->>R: Send pipeline configuration<br> mainStream(ToRunner{ pipeline })
+        end
     end
 
-    Note over O: Initialize all processors
+    Note over O,P: Initialize all processors
     loop For each processor in each runner
         O->>O: expectProcessor(instantiator)
         Note over O: Generate JSON-LD configuration for processor
-        O->>R: addProcessor with configuration
+        rect rgba(0, 0, 255, .1)
+            O->>R: Start processor with configuration<br> mainStream(ToRunner{proc: Processor{ uri, config, arguments }})
+        end
         R->>P: Initialize processor
         P->>R: Processor ready
-        R->>O: Initialized message with processor URI
+        rect rgba(0, 0, 255, .1)
+            R->>O: Initialized message with processor URI<br>mainStream(FromRunner{initialized: ProcessorInitialized{ uri, error? }}) 
+        end
         O->>O: Resolve processor startup promise
     end
 
-    Note over O: Start all runners
+    Note over O,P: Start all runners
     loop For each runner
-        O->>R: Start message
+        rect rgba(0, 0, 255, .1)
+            O->>R: Processors can start<br> mainStream(ToRunner{ start })
+        end
         loop For each processor in runner
             R->>P: Start processor execution
         end
@@ -259,30 +269,35 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant P1 as Processor 1<br/>Type: Writer
-    participant R1 as Runner 1<br/>Channel A Writer
-    participant O as Orchestrator<br/>Message Router
-    participant R2 as Runner 2<br/>Channel A Reader
-    participant P2 as Processor 2<br/>Type: Reader
+    participant P1 as Processor 1
+    participant R1 as Runner 1
+    participant O as Orchestrator
+    participant R2 as Runner 2
+    participant P2 as Processor 2
 
-    Note over P1: Processor generates message for Channel A
-    P1->>R1: Message with data for Channel A
-    Note over R1: Runner forwards message to orchestrator
-    R1->>O: gRPC SendingMessage(localSequenceNumber, channel, msg)
+    Note over P1: Processor generates message for a channel
+    P1->>R1: Message with data
+    rect rgba(0, 0, 255, .1)
+        R1->>O: Send message to orchestrator<br>mainStream(FromRunner{msg: SendingMessage { localSequenceNumber, channel, data }})
+    end
 
     Note over O: Orchestrator routes message to target instantiator
-    O->>O: Look up channelToInstantiator[channel]
-    O->>O: Create translated localSequenceNumber to globalSequenceNumber
-    O->>R2: gRPC ReceivingMessage(globalSequenceNumber, channel, msg)
+    O->>O: Look up channelToInstantiator[channel] <br> Translate localSequenceNumber to globalSequenceNumber
+    rect rgba(0, 0, 255, .1)
+        O->>R2: Forward message to receiving runner <br>mainStream(ToRunner{msg: ReceivingMessage{ globalSequenceNumber, channel, data }})
+    end
 
-    Note over R2: Runner forwards message to target processor
-    R2->>P2: Process message from Channel A
+    R2->>P2: Runner forwards message to target processor
+    P2->>P2: Process message
 
-    Note over P2: Processor finishes processing
-    P2->>R2: Processing complete
-    R2->>O: gRPC GlobalAck(globalSequenceNumber, channel)
-    O->>O: Clean up message state
-    O->>R1: gRPC LocalAck(localSequenceNumber, channel)
+    P2->>R2: Message processed
+    rect rgba(0, 0, 255, .1)
+        R2->>O: mainStream(FromRunner{processed: GlobalAck{ globalSequenceNumber, channel }})
+    end
+    rect rgba(0, 0, 255, .1)
+        O->>R1: mainStream(ToRunner{processed: LocalAck{ localSequenceNumber, channel }})
+    end
+    Note over P1: Processor is allowed to send a new message
 ```
 
 </details>
@@ -293,41 +308,50 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant P1 as Processor 1<br/>Stream Writer
-    participant R1 as Runner 1<br/>Source Runner
-    participant O as Orchestrator<br/>Stream Manager
-    participant R2 as Runner 2<br/>Target Runner
-    participant P2 as Processor 2<br/>Stream Reader
+    participant P1 as Processor 1
+    participant R1 as Runner 1
+    participant O as Orchestrator
+    participant R2 as Runner 2
+    participant P2 as Processor 2
 
-    Note over P1: Processor initiates streaming message
-    P1->>R1: Request to start streaming to Channel B
-    R1->>O: gRPC startStreamMessage(identify: (localSequenceNumber, channel, runner))
-    O->>R1: Return chunk acknowledged
+    P1->>R1: Start streaming message
+    rect rgba(255, 0, 0, .1)
+        R1->>O: Initiate sending stream<br>stub.sendStreamMessage() as sendingStream
+    end
+    R1->>O: Send identify message<br>sendingStream(StreamChunk{id: StreamIdentify{ localSequenceNumber, channel, runner }})
 
-    Note over O: Set up stream routing between runners
-    O->>O: Register connectingStreams[globalSequenceNumber]
-    O->>R2: gRPC ReceivingStreamMessage(globalSequenceNumber, global)
-    R2->>O: gRPC connectingReceivingStream(globalSequenceNumber)
-    O->>O: Link stream writer to connecting stream
-    O->>R1: Sends stream control - ReceivingStreamControl{streamSequenceNumber}
-
+    rect rgba(0, 0, 255, .1)
+        O->>R2: Notify receiving runner of incoming stream message <br> mainStream(ToRunner{streamMsg: ReceivingStreamMessage{ globalSequenceNumber, channel }})
+    end
+    rect rgba(255, 0, 0, .1)
+        R2->>O: Initiate receiving stream<br>stub.receiveStreamMessage() as receivingStream
+    end
+    R2->>O: Send identify message <br> receivingStream(SendingStreamControl{ globalSequenceNumber })
+    O->>R1: Send stream control message, indicating that the stream is ready to accept data <br> sendingStream(ReceivingStreamControl{ streamSequenceNumber })
 
     Note over P1: Begin streaming data
     loop For Each Chunk
-        P1->>R1: Stream data chunks
-        R1->>O: sendStreamMessage() - StreamChunk{data: DataChunk(bytes)}
-        O->>R2: receiveStreamMessage() - DataChunk(bytes)
-        R2->>P2: Forward data chunks to processor
+        P1->>R1: Send a chunk of data
+        R1->>O: Send a chunk<br>sendingStream(StreamChunk{data: DataChunk{ data }})
+        O->>R2: Receive a chunk<br>receivingStream(DataChunk{ data })
+        R2->>P2: Forward chunks to processor
+        P2->>P2: Handle chunk
         P2->>R2: Chunk handled
-        R2->>O: chunk handled - SendingStreamControl{streamSequenceNumber}
-        O->>R1: chunk handled - ReceivingStreamControl{streamSequenceNumber}
+        R2->>O: sequence number of the chunk in the stream <br> receivingStream(SendingStreamControl{ streamSequenceNumber })
+        O->>R1: sendingStream(ReceivingStreamControl{ streamSequenceNumber })
+        Note over P1: Processor is allowed to send a new chunk
     end
 
     P1->>R1: End of stream
-    R1->>O: Stream closed
-    O->>R2: Stream closed
-    R2->>O: FromRunnner{processed: GlobalAck(globalSequenceNumber, channel)}
-    O->>R1: ToRunner{processed: LocalAck(localSequenceNumber, channel)}
+    R1->>O: sendingStream closed
+    O->>R2: receivingStream closed
+    rect rgba(0, 0, 255, .1)
+        R2->>O: mainStream(FromRunner{processed: GlobalAck{ globalSequenceNumber, channel }})
+    end
+    rect rgba(0, 0, 255, .1)
+        O->>R1: mainStream(ToRunner{processed: LocalAck{ localSequenceNumber, channel }})
+    end
+    Note over P1: Processor is allowed to send a new message
 ```
 
 </details>
