@@ -5,7 +5,7 @@ export default defineConfig({
         coverage: {
             enabled: true,
             include: ['lib/'],
-            exclude: ['**/*.d.ts', 'lib/generated'], // Exclude all declaration files
+            exclude: ['**/*.d.ts', 'lib/generated', '**/*.tsbuildinfo'], // Exclude all declaration files
         },
     },
 })
