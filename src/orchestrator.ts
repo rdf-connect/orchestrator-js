@@ -12,15 +12,17 @@ import { Channels, Definitions, Instantiator, parse_processors } from '.'
 import { jsonld_to_string, RDFC, walkJson } from './util'
 import { Quad } from '@rdfjs/types'
 
-
 import {
     Close,
+    DataChunk,
+    GlobalAck,
     ReceivingMessage,
     ReceivingStreamControl,
     SendingMessage,
+    StreamChunk,
+    StreamIdentify,
 } from '@rdfc/proto'
 import { envReplace, LensError } from 'rdf-lens'
-import { DataChunk, GlobalAck, StreamChunk, StreamIdentify } from '@rdfc/proto'
 import { Logger } from 'winston'
 import { promisify } from 'util'
 
@@ -281,9 +283,8 @@ export class Orchestrator implements Callbacks {
         const cb = this.runningMessages[msg.globalSequenceNumber]
         if (cb) {
             delete this.runningMessages[msg.globalSequenceNumber]
-            this.logger.info(
-                'Successfully processed message with sequence number ' +
-                msg.globalSequenceNumber,
+            this.logger.debug(
+                `Successfully processed message with sequence number ${msg.globalSequenceNumber}`,
             )
             await cb()
         } else {
