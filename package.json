@@ -49,7 +49,7 @@
         "@types/node": "^24.9.2",
         "@typescript-eslint/eslint-plugin": "^8.46.2",
         "@typescript-eslint/parser": "^8.46.2",
-        "@vitest/coverage-v8": "^4.0.4",
+        "@vitest/coverage-v8": "^4.0.5",
         "eslint": "^9.21.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.4",
@@ -64,7 +64,7 @@
         "ttypescript": "^1.5.15",
         "typescript": "^5.9.3",
         "typescript-eslint": "^8.46.2",
-        "vitest": "^4.0.4"
+        "vitest": "^4.0.5"
     },
     "dependencies": {
         "@grpc/grpc-js": "^1.14.0",
