@@ -41,14 +41,14 @@
     "description": "A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing and executing data processing pipelines.",
     "devDependencies": {
         "@ajuvercr/ts-transformer-inline-file": "^0.2.0",
-        "@eslint/js": "^9.39.0",
+        "@eslint/js": "^9.39.1",
         "@rdfjs/types": "^2.0.1",
         "@types/jest": "^30.0.0",
         "@types/jsonld": "^1.5.15",
         "@types/n3": "^1.26.1",
         "@types/node": "^24.10.0",
-        "@typescript-eslint/eslint-plugin": "^8.46.2",
-        "@typescript-eslint/parser": "^8.46.2",
+        "@typescript-eslint/eslint-plugin": "^8.46.3",
+        "@typescript-eslint/parser": "^8.46.3",
         "@vitest/coverage-v8": "^4.0.6",
         "eslint": "^9.21.0",
         "eslint-config-prettier": "^10.1.8",
@@ -63,7 +63,7 @@
         "tsc-alias": "^1.8.16",
         "ttypescript": "^1.5.15",
         "typescript": "^5.9.3",
-        "typescript-eslint": "^8.46.2",
+        "typescript-eslint": "^8.46.3",
         "vitest": "^4.0.6"
     },
     "dependencies": {
