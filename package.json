@@ -47,9 +47,9 @@
         "@types/jsonld": "^1.5.15",
         "@types/n3": "^1.26.1",
         "@types/node": "^24.10.7",
-        "@typescript-eslint/eslint-plugin": "^8.52.0",
-        "@typescript-eslint/parser": "^8.52.0",
-        "@vitest/coverage-v8": "^4.0.16",
+        "@typescript-eslint/eslint-plugin": "^8.53.0",
+        "@typescript-eslint/parser": "^8.53.0",
+        "@vitest/coverage-v8": "^4.0.17",
         "eslint": "^9.21.0",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^5.5.4",
@@ -63,8 +63,8 @@
         "tsc-alias": "^1.8.16",
         "ttypescript": "^1.5.15",
         "typescript": "^5.9.3",
-        "typescript-eslint": "^8.52.0",
-        "vitest": "^4.0.16"
+        "typescript-eslint": "^8.53.0",
+        "vitest": "^4.0.17"
     },
     "dependencies": {
         "@grpc/grpc-js": "^1.14.3",
