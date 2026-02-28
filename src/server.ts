@@ -71,12 +71,14 @@ export class Server {
                 stream.on('end', () => (closed = true))
                 stream.on('close', () => (closed = true))
                 stream.on('error', (err) => {
-                    this.logger.debug(
-                        'Unexpected stream error: ' +
-                            err.name +
-                            ' ' +
-                            err.message,
-                    )
+                    if (err.code !== 'ABORT_ERR' && err.code !== 'CANCELLED') {
+                        this.logger.debug(
+                            'Unexpected stream error: ' +
+                                err.name +
+                                ' ' +
+                                err.message,
+                        )
+                    }
                     closed = true
                 })
 

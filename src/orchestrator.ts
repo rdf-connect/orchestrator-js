@@ -157,7 +157,7 @@ export class Orchestrator implements Callbacks {
         }
         this.logger.debug(
             'Found definitions ' +
-            JSON.stringify(Object.keys(this.definitions)),
+                JSON.stringify(Object.keys(this.definitions)),
         )
         if (pipelineIsString(pipeline)) {
             try {
@@ -188,15 +188,15 @@ export class Orchestrator implements Callbacks {
                         if (isType) {
                             this.logger.error(
                                 'Cannot find a type for ' +
-                                collapseLast(lastId) +
-                                ', maybe it does not exist. Try importing the object or check for typos.',
+                                    collapseLast(lastId) +
+                                    ', maybe it does not exist. Try importing the object or check for typos.',
                             )
                         } else {
                             this.logger.error(
                                 'No matching triples found for predicate ' +
-                                collapseLast(lastPred) +
-                                ' on subject ' +
-                                collapseLast(lastId),
+                                    collapseLast(lastPred) +
+                                    ' on subject ' +
+                                    collapseLast(lastId),
                             )
                         }
                     } else {
@@ -206,12 +206,12 @@ export class Orchestrator implements Callbacks {
                         if (
                             expectedType &&
                             expectedType.opts ===
-                            'https://w3id.org/rdf-lens/ontology#TypedExtract'
+                                'https://w3id.org/rdf-lens/ontology#TypedExtract'
                         ) {
                             this.logger.error(
                                 'Expected a type triple for ' +
-                                collapseLast(lastId) +
-                                ' but found none, maybe you referred to a not existing object. Try importing the object or check for typos.',
+                                    collapseLast(lastId) +
+                                    ' but found none, maybe you referred to a not existing object. Try importing the object or check for typos.',
                             )
                         }
                     }
@@ -416,7 +416,7 @@ export class Orchestrator implements Callbacks {
         if (connectingStreamResolve === undefined) {
             this.logger.error(
                 'Expected a set up stream message with id ' +
-                globalSequenceNumber,
+                    globalSequenceNumber,
             )
             return
         }
@@ -577,8 +577,8 @@ export class Orchestrator implements Callbacks {
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
-            this.pipeline.parts.map((x) => x.processors.length) +
-            ' processors',
+                this.pipeline.parts.map((x) => x.processors.length) +
+                ' processors',
         )
 
         const startPromises = []

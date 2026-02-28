@@ -245,7 +245,7 @@ sequenceDiagram
         R->>P: Initialize processor
         P->>R: Processor ready
         rect rgba(0, 0, 255, .1)
-            R->>O: Initialized message with processor URI<br>mainStream(FromRunner{initialized: ProcessorInitialized{ uri, error? }}) 
+            R->>O: Initialized message with processor URI<br>mainStream(FromRunner{initialized: ProcessorInitialized{ uri, error? }})
         end
         O->>O: Resolve processor startup promise
     end
