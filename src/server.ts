@@ -74,9 +74,9 @@ export class Server {
                     if (err.code !== 'ABORT_ERR' && err.code !== 'CANCELLED') {
                         this.logger.debug(
                             'Unexpected stream error: ' +
-                            err.name +
-                            ' ' +
-                            err.message,
+                                err.name +
+                                ' ' +
+                                err.message,
                         )
                     }
                     closed = true
