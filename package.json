@@ -35,7 +35,8 @@
     },
     "author": "Arthur Vercruysse",
     "contributors": [
-        "Ieben Smessaert"
+        "Ieben Smessaert",
+        "Julián Rojas"
     ],
     "license": "MIT",
     "description": "A JavaScript/TypeScript implementation of an RDF-based orchestrator for managing and executing data processing pipelines.",
