@@ -23,7 +23,7 @@
   sh:targetClass <Property>;
   sh:property [
     sh:name "name";
-    sh:path sh:name;
+    sh:path [sh:alternativePath (sh:codeIdentifier sh:name) ];
     sh:minCount 1;
     sh:maxCount 1;
     sh:datatype xsd:string;
