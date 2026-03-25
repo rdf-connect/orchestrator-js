@@ -180,7 +180,8 @@ describe('Extract processor correctly', () => {
     sh:maxCount 1;
     sh:minCount 1;
   ].
-
+`
+    const configName = `
 [] a sh:NodeShape;
   sh:targetClass ex:SimpleShape;
   sh:property [
@@ -199,6 +200,58 @@ describe('Extract processor correctly', () => {
     sh:maxCount 1;
   ], [
     sh:name "nested";
+    sh:path ex:nested;
+    sh:class ex:SimpleShape;
+    sh:maxCount 1;
+  ].
+`
+    const configCodeIdentifier = `
+[] a sh:NodeShape;
+  sh:targetClass ex:SimpleShape;
+  sh:property [
+    sh:codeIdentifier "number";
+    sh:path ex:number;
+    sh:datatype xsd:integer;
+  ],[
+    sh:codeIdentifier "string";
+    sh:path ex:string;
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ],[
+    sh:codeIdentifier "iri";
+    sh:path ex:iri;
+    sh:datatype xsd:iri;
+    sh:maxCount 1;
+  ], [
+    sh:codeIdentifier "nested";
+    sh:path ex:nested;
+    sh:class ex:SimpleShape;
+    sh:maxCount 1;
+  ].
+`
+    const configMixed = `
+[] a sh:NodeShape;
+  sh:targetClass ex:SimpleShape;
+  sh:property [
+    sh:name "Number value";
+    sh:codeIdentifier "number";
+    sh:path ex:number;
+    sh:datatype xsd:integer;
+  ],[
+    sh:name "String value";
+    sh:codeIdentifier "string";
+    sh:path ex:string;
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ],[
+    sh:name "IRI value";
+    sh:codeIdentifier "iri";
+    sh:path ex:iri;
+    sh:datatype xsd:iri;
+    sh:maxCount 1;
+  ], [
+    sh:name "Nested value";
+    sh:codeIdentifier "nested";
     sh:path ex:nested;
     sh:class ex:SimpleShape;
     sh:maxCount 1;
@@ -226,15 +279,37 @@ ex:collection a ex:Collection;
     ex:number ( 1 2 3 ).
 `
 
-    const config_quads = parse_quads(config)
-    const processors = parse_processors(config_quads)
+    const config_quads_name = parse_quads(config + configName)
+    const config_quads_codeIdentifier = parse_quads(
+        config + configCodeIdentifier,
+    )
+    const config_quads_mixed = parse_quads(config + configMixed)
+    const processors_name = parse_processors(config_quads_name)
+    const processors_codeIdentifier = parse_processors(
+        config_quads_codeIdentifier,
+    )
+    const processors_mixed = parse_processors(config_quads_mixed)
     const data_quads = parse_quads(data)
 
-    function getDocument(iri: string, shape: string): Document {
-        return processors[shape].addToDocument(
+    function getDocumentName(iri: string, shape: string): Document {
+        return processors_name[shape].addToDocument(
             new NamedNode(iri),
             data_quads,
-            processors,
+            processors_name,
+        )
+    }
+    function getDocumentCodeIdentifier(iri: string, shape: string): Document {
+        return processors_codeIdentifier[shape].addToDocument(
+            new NamedNode(iri),
+            data_quads,
+            processors_codeIdentifier,
+        )
+    }
+    function getDocumentMixed(iri: string, shape: string): Document {
+        return processors_mixed[shape].addToDocument(
+            new NamedNode(iri),
+            data_quads,
+            processors_mixed,
         )
     }
 
@@ -268,7 +343,7 @@ ex:collection a ex:Collection;
         string: '42',
         iri: 'http://example.org/ns#fourtyTwo',
         nested: {
-            '@id': '_:n3-50',
+            '@id': '_:n3-85',
             '@type': 'http://example.org/ns#SimpleShape',
             '@context': simpleShapeContext,
             string: '43',
@@ -278,8 +353,8 @@ ex:collection a ex:Collection;
         },
     }
 
-    test('can parse simple shapes', async () => {
-        const document = getDocument(EX + 'simple', EX + 'SimpleShape')
+    test('can parse simple shapes with only sh:name', async () => {
+        const document = getDocumentName(EX + 'simple', EX + 'SimpleShape')
         expect(document).toEqual(
             Object.assign(
                 { '@id': 'http://example.org/ns#simple' },
@@ -303,8 +378,8 @@ _:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
         )
     })
 
-    test('can parse nested shapes', async () => {
-        const document = getDocument(EX + 'simple', EX + 'Nested')
+    test('can parse nested shapes with only sh:name', async () => {
+        const document = getDocumentName(EX + 'simple', EX + 'Nested')
         expect(document).toEqual({
             '@id': 'http://example.org/ns#simple',
             '@type': 'http://example.org/ns#Nested',
@@ -338,8 +413,8 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
         )
     })
 
-    test('can parse cbd shapes', async () => {
-        const document = getDocument(EX + 'simple', EX + 'CBD')
+    test('can parse cbd shapes with only sh:name', async () => {
+        const document = getDocumentName(EX + 'simple', EX + 'CBD')
         expect(document).toEqual({
             '@id': 'http://example.org/ns#simple',
             '@type': 'http://example.org/ns#CBD',
@@ -349,7 +424,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-50',
+                '@id': '_:n3-85',
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -385,8 +460,8 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-
         )
     })
 
-    test('Can parse collection', async () => {
-        const document = getDocument(EX + 'collection', EX + 'Collection')
+    test('Can parse collection with only sh:name', async () => {
+        const document = getDocumentName(EX + 'collection', EX + 'Collection')
         expect(document).toEqual({
             '@id': 'http://example.org/ns#collection',
             '@type': 'http://example.org/ns#Collection',
@@ -400,13 +475,288 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-
         })
     })
 
-    test('cannot parse invalid shape', async () => {
-        expect(() => getDocument(EX + 'simple', EX + 'Invalid')).toThrow()
+    test('cannot parse invalid shape with only sh:name', async () => {
+        expect(() => getDocumentName(EX + 'simple', EX + 'Invalid')).toThrow()
     })
 
-    test('cannot parse invalid property', async () => {
+    test('cannot parse invalid property with only sh:name', async () => {
         expect(() =>
-            getDocument(EX + 'simple', EX + 'InvalidProperty'),
+            getDocumentName(EX + 'simple', EX + 'InvalidProperty'),
+        ).toThrow()
+    })
+
+    test('can parse simple shapes with only sh:codeIdentifier', async () => {
+        const document = getDocumentCodeIdentifier(
+            EX + 'simple',
+            EX + 'SimpleShape',
+        )
+        expect(document).toEqual(
+            Object.assign(
+                { '@id': 'http://example.org/ns#simple' },
+                simpleShape,
+            ),
+        )
+        const quads_str = await getTurtle(document)
+        const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+`
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('can parse nested shapes with only sh:codeIdentifier', async () => {
+        const document = getDocumentCodeIdentifier(EX + 'simple', EX + 'Nested')
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#simple',
+            '@type': 'http://example.org/ns#Nested',
+            '@context': {
+                foobar: {
+                    '@id': 'http://example.org/ns#number',
+                    '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                },
+                inner: '@nest',
+                '@version': 1.1,
+            },
+            foobar: 42,
+            inner: simpleShape,
+        })
+        const quads_str = await getTurtle(document)
+        const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-44 <http://example.org/ns#number> 43 .
+_:n3-44 <http://example.org/ns#string> "43" .
+_:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#Nested> .
+`
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('can parse cbd shapes with only sh:codeIdentifier', async () => {
+        const document = getDocumentCodeIdentifier(EX + 'simple', EX + 'CBD')
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#simple',
+            '@type': 'http://example.org/ns#CBD',
+            '@context': {
+                cbd: {
+                    '@id': 'http://example.org/ns#nested',
+                },
+            },
+            cbd: {
+                '@id': '_:n3-85',
+                '@type': 'https://w3id.org/rdf-lens/ontology#Path',
+                'http://example.org/ns#number': [
+                    {
+                        '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                        '@value': '43',
+                    },
+                ],
+                'http://example.org/ns#string': [
+                    {
+                        '@type': 'http://www.w3.org/2001/XMLSchema#string',
+                        '@value': '43',
+                    },
+                ],
+                'http://example.org/ns#iri': [
+                    {
+                        '@id': 'http://example.org/ns#fourtyThree',
+                    },
+                ],
+            },
+        })
+        const quads_str = await getTurtle(document)
+        const eql_to = `_:n3-44 <http://example.org/ns#number> 43 .
+_:n3-44 <http://example.org/ns#string> "43" .
+_:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-lens/ontology#Path> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
+`
+
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('Can parse collection with only sh:codeIdentifier', async () => {
+        const document = getDocumentCodeIdentifier(
+            EX + 'collection',
+            EX + 'Collection',
+        )
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#collection',
+            '@type': 'http://example.org/ns#Collection',
+            '@context': {
+                numbers: {
+                    '@id': 'http://example.org/ns#number',
+                    '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                },
+            },
+            numbers: [1, 2, 3],
+        })
+    })
+
+    test('cannot parse invalid shape with only sh:codeIdentifier', async () => {
+        expect(() =>
+            getDocumentCodeIdentifier(EX + 'simple', EX + 'Invalid'),
+        ).toThrow()
+    })
+
+    test('cannot parse invalid property with only sh:codeIdentifier', async () => {
+        expect(() =>
+            getDocumentCodeIdentifier(EX + 'simple', EX + 'InvalidProperty'),
+        ).toThrow()
+    })
+
+    test('can parse simple shapes with only sh:codeIdentifier', async () => {
+        const document = getDocumentCodeIdentifier(
+            EX + 'simple',
+            EX + 'SimpleShape',
+        )
+        expect(document).toEqual(
+            Object.assign(
+                { '@id': 'http://example.org/ns#simple' },
+                simpleShape,
+            ),
+        )
+        const quads_str = await getTurtle(document)
+        const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-43 <http://example.org/ns#number> 43 .
+_:n3-43 <http://example.org/ns#string> "43" .
+_:n3-43 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-43 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+`
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('can parse nested shapes with both sh:codeIdentifier and sh:name', async () => {
+        const document = getDocumentMixed(EX + 'simple', EX + 'Nested')
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#simple',
+            '@type': 'http://example.org/ns#Nested',
+            '@context': {
+                foobar: {
+                    '@id': 'http://example.org/ns#number',
+                    '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                },
+                inner: '@nest',
+                '@version': 1.1,
+            },
+            foobar: 42,
+            inner: simpleShape,
+        })
+        const quads_str = await getTurtle(document)
+        const eql_to = `<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#number> 42 .
+<http://example.org/ns#simple> <http://example.org/ns#string> "42" .
+<http://example.org/ns#simple> <http://example.org/ns#iri> <http://example.org/ns#fourtyTwo> .
+_:n3-44 <http://example.org/ns#number> 43 .
+_:n3-44 <http://example.org/ns#string> "43" .
+_:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#SimpleShape> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#Nested> .
+`
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('can parse cbd shapes with both sh:codeIdentifier and sh:name', async () => {
+        const document = getDocumentMixed(EX + 'simple', EX + 'CBD')
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#simple',
+            '@type': 'http://example.org/ns#CBD',
+            '@context': {
+                cbd: {
+                    '@id': 'http://example.org/ns#nested',
+                },
+            },
+            cbd: {
+                '@id': '_:n3-85',
+                '@type': 'https://w3id.org/rdf-lens/ontology#Path',
+                'http://example.org/ns#number': [
+                    {
+                        '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                        '@value': '43',
+                    },
+                ],
+                'http://example.org/ns#string': [
+                    {
+                        '@type': 'http://www.w3.org/2001/XMLSchema#string',
+                        '@value': '43',
+                    },
+                ],
+                'http://example.org/ns#iri': [
+                    {
+                        '@id': 'http://example.org/ns#fourtyThree',
+                    },
+                ],
+            },
+        })
+        const quads_str = await getTurtle(document)
+        const eql_to = `_:n3-44 <http://example.org/ns#number> 43 .
+_:n3-44 <http://example.org/ns#string> "43" .
+_:n3-44 <http://example.org/ns#iri> <http://example.org/ns#fourtyThree> .
+_:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://w3id.org/rdf-lens/ontology#Path> .
+<http://example.org/ns#simple> <http://example.org/ns#nested> _:n3-44 .
+<http://example.org/ns#simple> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns#CBD> .
+`
+
+        check_quads_are_equal(
+            new Parser().parse(quads_str),
+            new Parser().parse(eql_to),
+        )
+    })
+
+    test('Can parse collection with both sh:codeIdentifier and sh:name', async () => {
+        const document = getDocumentMixed(EX + 'collection', EX + 'Collection')
+        expect(document).toEqual({
+            '@id': 'http://example.org/ns#collection',
+            '@type': 'http://example.org/ns#Collection',
+            '@context': {
+                numbers: {
+                    '@id': 'http://example.org/ns#number',
+                    '@type': 'http://www.w3.org/2001/XMLSchema#integer',
+                },
+            },
+            numbers: [1, 2, 3],
+        })
+    })
+
+    test('cannot parse invalid shape with both sh:codeIdentifier and sh:name', async () => {
+        expect(() => getDocumentMixed(EX + 'simple', EX + 'Invalid')).toThrow()
+    })
+
+    test('cannot parse invalid property with both sh:codeIdentifier and sh:name', async () => {
+        expect(() =>
+            getDocumentMixed(EX + 'simple', EX + 'InvalidProperty'),
         ).toThrow()
     })
 })

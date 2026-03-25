@@ -91,7 +91,9 @@ export class OrchestratorTestFixture {
     /**
      * Set up the test pipeline configuration
      */
-    async setupPipeline(): Promise<void> {
+    async setupPipeline(
+        definitionType: 'name' | 'codeIdentifier' | 'mixed' = 'name',
+    ): Promise<void> {
         // Set up the orchestrator lens for RDF processing
         modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
             empty<Cont>().map(() => this.orchestrator)
@@ -102,7 +104,7 @@ export class OrchestratorTestFixture {
     @prefix owl: <http://www.w3.org/2002/07/owl#>.
     @prefix rdfc: <https://w3id.org/rdf-connect#>.
 
-    <> owl:imports <__tests__/config.ttl>.
+    <> owl:imports <__tests__/config-${definitionType}.ttl>.
     <> a rdfc:Pipeline;
         rdfc:consistsOf [
             rdfc:instantiates ex:runner1;
