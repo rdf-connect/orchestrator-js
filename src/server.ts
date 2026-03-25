@@ -65,20 +65,16 @@ export class Server {
                         'Expected the first msg to be an identify message',
                     )
                 }
-                this.logger.debug('Got identify message')
 
                 let closed = false
-                stream.on('end', () => (closed = true))
-                stream.on('close', () => (closed = true))
-                stream.on('error', (err) => {
-                    if (err.code !== 'ABORT_ERR' && err.code !== 'CANCELLED') {
-                        this.logger.debug(
-                            'Unexpected stream error: ' +
-                                err.name +
-                                ' ' +
-                                err.message,
-                        )
-                    }
+                stream.on('end', () => {
+                    closed = true
+                    stream.end()
+                })
+                stream.on('close', () => {
+                    closed = true
+                })
+                stream.on('error', () => {
                     closed = true
                 })
 
@@ -101,9 +97,6 @@ export class Server {
                 const channels = {
                     sendMessage: {
                         write: sendMessage,
-                        close: async () => {
-                            stream.end()
-                        },
                     },
                     receiveMessage: stream,
                 }
@@ -158,8 +151,6 @@ export class Server {
                     throw 'Expected identifying control message as first message of stream message, identifying which stream it wants to receive'
                 }
                 const id = ctrl.globalSequenceNumber!
-                this.logger.debug('Receive stream message ' + id)
-
                 this.orchestrator.onReceivingStreamConnected(id, call)
             },
             /**
@@ -181,7 +172,10 @@ export class Server {
                 } catch (ex) {
                     if (ex instanceof Error) {
                         this.logger.debug(
-                            'Log stream closed: ' + ex.name + ' ' + ex.message,
+                            '[gRPC logStream] stream closed: ' +
+                                ex.name +
+                                ' ' +
+                                ex.message,
                         )
                     }
                 }

@@ -43,9 +43,10 @@ export async function start(location: string, port = 50051) {
     setupOrchestratorLens(orchestrator)
 
     grpcServer.addService(RunnerService, server.server)
+    const connectionString = '0.0.0.0:' + port
     await new Promise((res) =>
         grpcServer.bindAsync(
-            '0.0.0.0:' + port,
+            connectionString,
             grpc.ServerCredentials.createInsecure(),
             res,
         ),
@@ -59,7 +60,7 @@ export async function start(location: string, port = 50051) {
 
     reevaluteLevels()
     logger.debug('Setting pipeline')
-    orchestrator.setPipeline(quads, iri.toString())
+    await orchestrator.setPipeline(quads, iri.toString())
 
     await orchestrator.startInstantiators(
         addr,
@@ -70,14 +71,8 @@ export async function start(location: string, port = 50051) {
 
     await orchestrator.waitClose()
 
-    grpcServer.tryShutdown((e) => {
-        if (e !== undefined) {
-            logger.error(e)
-            process.exit(1)
-        } else {
-            process.exit(0)
-        }
-    })
+    grpcServer.drain(connectionString, 500)
+    process.exit(0)
 }
 
 /**

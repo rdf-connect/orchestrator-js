@@ -10,6 +10,7 @@ import { NamedNode, Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
 import {
     CommandInstantiator,
+    HttpInstantiator,
     Instantiator,
     InstantiatorConfig,
     TestInstantiator,
@@ -82,6 +83,9 @@ export const modelShapes = extractShapes(modelQuads, {
     'https://w3id.org/rdf-connect#Runner': (
         inp: InstantiatorConfig & { command: string },
     ) => new CommandInstantiator(inp),
+    'https://w3id.org/rdf-connect#HttpRunner': (
+        inp: InstantiatorConfig & { endpoint: Term },
+    ) => new HttpInstantiator(inp),
     'https://w3id.org/rdf-connect#TestRunner': (inp: InstantiatorConfig) =>
         new TestInstantiator(inp),
 })
