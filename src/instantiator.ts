@@ -23,7 +23,6 @@ import { Logger } from 'winston'
 
 export type Sender<T> = {
     write: (msg: T) => Promise<unknown>
-    close: () => void | Promise<void>
 }
 
 /**
@@ -65,7 +64,6 @@ export abstract class Instantiator {
     /** Function to send messages to the runner */
     protected sendMessage: Sender<ToRunner> = {
         write: async () => {},
-        close: async () => {},
     }
 
     /**
@@ -317,6 +315,34 @@ export class CommandInstantiator extends Instantiator {
         child.on('close', (code) => {
             this.logger.info(`exited with code ${code}`)
         })
+    }
+}
+
+/**
+ * An Instantiator implementation that starts a runner by POSTing to an HTTP endpoint.
+ * The endpoint receives `{host, uri}` and is expected to connect back to the orchestrator via gRPC.
+ */
+export class HttpInstantiator extends Instantiator {
+    private endpoint: string
+
+    constructor(config: InstantiatorConfig & { endpoint: Term }) {
+        super(config)
+        this.endpoint = config.endpoint.value
+        this.logger.debug('Built an HTTP runner!')
+    }
+
+    async start(addr: string): Promise<void> {
+        this.logger.info(`POSTing to ${this.endpoint}`)
+        const response = await fetch(this.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ host: addr, uri: this.id.value }),
+        })
+        if (!response.ok) {
+            throw new Error(
+                `HTTP runner endpoint responded with ${response.status}: ${await response.text()}`,
+            )
+        }
     }
 }
 

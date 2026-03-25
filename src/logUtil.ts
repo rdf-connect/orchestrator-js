@@ -1,4 +1,5 @@
-import { PrefixCallback } from 'n3'
+import { NamedNode, Quad } from '@rdfjs/types'
+import { NamedNode as NN, PrefixCallback, Writer } from 'n3'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import winston, { format, Logger } from 'winston'
@@ -22,6 +23,23 @@ export function setPipelineFile(path: URL) {
 
 export const prefixFound: PrefixCallback = (prefix, node) => {
     prefixes.push({ prefix, node: node.value })
+}
+
+export function prettyTurtle(triples: Quad[]): Promise<string> {
+    const localPrefixes: {
+        [key: string]: NamedNode
+    } = {}
+    for (const p of prefixes) {
+        localPrefixes[p.prefix] = new NN(p.node)
+    }
+    const writer = new Writer({ prefixes: localPrefixes })
+    writer.addQuads(triples)
+    return new Promise((res, rej) => {
+        writer.end((e, r) => {
+            if (e) rej(e)
+            else res(r)
+        })
+    })
 }
 
 const DEBUG_ENV = (process.env.DEBUG || '').toLowerCase()
