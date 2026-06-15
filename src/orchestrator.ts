@@ -25,6 +25,15 @@ import {
 import { envReplace, LensError } from 'rdf-lens'
 import { Logger } from 'winston'
 import { promisify } from 'util'
+import {
+    dateTimeLiteral,
+    PROV_ENDED_AT_TIME,
+    PROV_GENERATED_AT_TIME,
+    PROV_STARTED_AT_TIME,
+} from './provenance'
+import { DataFactory } from 'rdf-data-factory'
+
+const df = new DataFactory()
 
 const decoder = new TextDecoder()
 /**
@@ -119,6 +128,15 @@ export class Orchestrator implements Callbacks {
     readonly openChannels: Promise<unknown>[] = []
 
     protected readonly logLevels: { [uri: string]: (msg: string) => void } = {}
+
+    /** Moment the start signal was sent to the processors (prov:startedAtTime). */
+    protected processorsStartedAt?: Date
+
+    /** Moment the processors finished, i.e. when all channels closed (prov:endedAtTime). */
+    protected processorsEndedAt?: Date
+
+    /** Maps channel URIs to the moment they were closed (prov:generatedAtTime). */
+    protected readonly channelClosedAt: Map<string, Date> = new Map()
 
     /**
      * Sets the pipeline configuration from a URI.
@@ -232,6 +250,9 @@ export class Orchestrator implements Callbacks {
      */
     async close(close: Close) {
         this.logger.debug('Got close message for channel ' + close.channel)
+        if (!this.channelClosedAt.has(close.channel)) {
+            this.channelClosedAt.set(close.channel, new Date())
+        }
         await Promise.all(
             this.pipeline.parts.map((part) => part.instantiator.close(close)),
         )
@@ -501,6 +522,59 @@ export class Orchestrator implements Callbacks {
      */
     async waitClose() {
         await Promise.all(this.openChannels)
+        this.processorsEndedAt = new Date()
+    }
+
+    /**
+     * Builds the runtime timing provenance quads collected during execution.
+     *
+     * For every processor a `prov:startedAtTime` (when the start signal was
+     * sent) and a `prov:endedAtTime` (when all channels closed) triple is
+     * emitted. For every closed channel a `prov:generatedAtTime` triple is
+     * emitted with the moment the channel was closed.
+     *
+     * @returns {Quad[]} The collected timing quads (empty if nothing ran yet).
+     */
+    getProvenanceTimingQuads(): Quad[] {
+        const quads: Quad[] = []
+
+        for (const part of this.pipeline.parts) {
+            for (const proc of part.processors) {
+                if (proc.id.termType !== 'NamedNode') {
+                    continue
+                }
+                if (this.processorsStartedAt) {
+                    quads.push(
+                        df.quad(
+                            proc.id,
+                            PROV_STARTED_AT_TIME,
+                            dateTimeLiteral(this.processorsStartedAt),
+                        ),
+                    )
+                }
+                if (this.processorsEndedAt) {
+                    quads.push(
+                        df.quad(
+                            proc.id,
+                            PROV_ENDED_AT_TIME,
+                            dateTimeLiteral(this.processorsEndedAt),
+                        ),
+                    )
+                }
+            }
+        }
+
+        for (const [channel, closedAt] of this.channelClosedAt) {
+            quads.push(
+                df.quad(
+                    df.namedNode(channel),
+                    PROV_GENERATED_AT_TIME,
+                    dateTimeLiteral(closedAt),
+                ),
+            )
+        }
+
+        return quads
     }
 
     /**
@@ -618,6 +692,7 @@ export class Orchestrator implements Callbacks {
         await Promise.all(
             this.pipeline.parts.map((x) => x.instantiator.startProcessors()),
         )
+        this.processorsStartedAt = new Date()
     }
 }
 

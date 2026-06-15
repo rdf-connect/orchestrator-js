@@ -1,6 +1,6 @@
-import { RdfJsTerm, reasonStream } from 'eyeling'
+import { reasonStream } from 'eyeling'
 import * as RDF from '@rdfjs/types'
-import { Quad, Quad_Predicate, Quad_Subject } from '@rdfjs/types'
+import { Quad } from '@rdfjs/types'
 import { writeFile } from 'node:fs/promises'
 import { rdfSerializer } from 'rdf-serialize'
 import { streamifyArray } from 'streamify-array'
@@ -13,6 +13,24 @@ import { getLoggerFor } from './logUtil'
 const df: RDF.DataFactory = new DataFactory()
 const provenanceRules = $INLINE_FILE('./provenanceRules.n3')
 const logger = getLoggerFor(['provenance'])
+
+const XSD_DATETIME = 'http://www.w3.org/2001/XMLSchema#dateTime'
+const PROV = 'http://www.w3.org/ns/prov#'
+
+/** PROV-O predicates used for the runtime timing provenance. */
+export const PROV_STARTED_AT_TIME = df.namedNode(PROV + 'startedAtTime')
+export const PROV_ENDED_AT_TIME = df.namedNode(PROV + 'endedAtTime')
+export const PROV_GENERATED_AT_TIME = df.namedNode(PROV + 'generatedAtTime')
+
+/**
+ * Creates an `xsd:dateTime` literal for the given date.
+ *
+ * @param {Date} date - The moment to encode.
+ * @returns {RDF.Literal} A literal with the ISO-8601 value and `xsd:dateTime` datatype.
+ */
+export function dateTimeLiteral(date: Date): RDF.Literal {
+    return df.literal(date.toISOString(), df.namedNode(XSD_DATETIME))
+}
 
 /**
  * Computes the inferred PROV-O metadata for a pipeline.
@@ -59,23 +77,18 @@ export function inferProvenance(
                 if (!quad) {
                     return
                 }
-                const derived = df.quad(
-                    toTerm(quad.subject) as Quad_Subject,
-                    toTerm(quad.predicate) as Quad_Predicate,
-                    toTerm(quad.object),
-                )
 
                 // Keep only derivations anchored to a pipeline entity, dropping
                 // triples derived purely from within the ontology.
                 if (
-                    !pipelineTerms.has(derived.subject.value) &&
-                    !pipelineTerms.has(derived.object.value)
+                    !pipelineTerms.has(quad.subject.value) &&
+                    !pipelineTerms.has(quad.object.value)
                 ) {
                     return
                 }
 
                 // The store deduplicates against existing pipeline quads.
-                store.addQuad(derived)
+                store.addQuad(quad)
             },
         },
     )
@@ -108,16 +121,4 @@ export async function writeProvenance(
         }),
     )
     await writeFile(location, provenanceString, { encoding: 'utf8' })
-}
-
-function toTerm(eyeTerm: RdfJsTerm) {
-    if (eyeTerm.termType === 'NamedNode') {
-        return df.namedNode(eyeTerm.value)
-    } else if (eyeTerm.termType === 'BlankNode') {
-        return df.blankNode(eyeTerm.value)
-    } else if (eyeTerm.termType === 'Literal') {
-        return df.literal(eyeTerm.value)
-    } else {
-        throw new Error('Unknown term type: ' + eyeTerm.termType)
-    }
 }

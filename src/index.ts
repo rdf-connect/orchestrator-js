@@ -92,8 +92,9 @@ export async function start(
     await orchestrator.waitClose()
 
     if (provenanceLocation) {
+        const timingQuads = orchestrator.getProvenanceTimingQuads()
         await writeProvenance(
-            provenanceQuads,
+            [...provenanceQuads, ...timingQuads],
             provenanceLocation,
             getPrefixes(),
         )
