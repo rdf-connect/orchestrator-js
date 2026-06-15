@@ -16,6 +16,14 @@ function parseArgs(args) {
     if (isNaN(port) || port <= 0 || port >= 65536) {
         throw new Error('Invalid port number')
     }
+
+    let provenanceLocation
+    const provenanceFlagIdx = args.findIndex((v) => v === '--provenance')
+    if (provenanceFlagIdx !== -1) {
+        const provenanceArgument = args.splice(provenanceFlagIdx, 2)
+        provenanceLocation = provenanceArgument[1]
+    }
+
     if (args.length !== 3) {
         const thisArgumentCount = portFlagIdx === -1 ? 3 : 5
         const receivedArgsCount =
@@ -25,13 +33,15 @@ function parseArgs(args) {
         )
     }
     const location = path.resolve(args[2])
-    return { port, location }
+    return { port, location, provenanceLocation }
 }
 
 try {
-    const { port, location } = parseArgs(process.argv.slice())
+    const { port, location, provenanceLocation } = parseArgs(
+        process.argv.slice(),
+    )
 
-    start(location, port).catch((ex) => {
+    start(location, port, provenanceLocation).catch((ex) => {
         if (ex instanceof Error) {
             console.error(ex.stack)
         } else {
