@@ -15,12 +15,6 @@ const provenanceRules = $INLINE_FILE('./provenanceRules.n3')
 const logger = getLoggerFor(['provenance'])
 
 const XSD_DATETIME = 'http://www.w3.org/2001/XMLSchema#dateTime'
-const PROV = 'http://www.w3.org/ns/prov#'
-
-/** PROV-O predicates used for the runtime timing provenance. */
-export const PROV_STARTED_AT_TIME = df.namedNode(PROV + 'startedAtTime')
-export const PROV_ENDED_AT_TIME = df.namedNode(PROV + 'endedAtTime')
-export const PROV_GENERATED_AT_TIME = df.namedNode(PROV + 'generatedAtTime')
 
 /**
  * Creates an `xsd:dateTime` literal for the given date.
@@ -37,13 +31,10 @@ export function dateTimeLiteral(date: Date): RDF.Literal {
  *
  * Reasoning is performed over the combination of the pipeline quads, the
  * RDF-Connect ontology quads and the provenance N3 rules. The newly derived
- * triples are filtered so that ontology-only derivations are dropped while all
- * pipeline-related derivations are kept, and are then merged with the original
- * pipeline quads into a single deduplicated store.
+ * triples are merged with the original pipeline quads into a single deduplicated store.
  *
  * The ontology quads and the rules are only used as reasoning input and are
- * never part of the returned result. The derived triples are used solely for
- * the provenance artifact and are not fed back into pipeline execution.
+ * never part of the returned result.
  *
  * @param {Quad[]} pipelineQuads - The quads retrieved from the pipeline file.
  * @param {Quad[]} ontologyQuads - The RDF-Connect ontology quads (reasoning input only).
@@ -53,14 +44,6 @@ export function inferProvenance(
     pipelineQuads: Quad[],
     ontologyQuads: Quad[],
 ): Quad[] {
-    // All terms (subjects and objects) that occur in the pipeline. Used to
-    // distinguish pipeline-related derivations from ontology-only ones.
-    const pipelineTerms = new Set<string>()
-    for (const quad of pipelineQuads) {
-        pipelineTerms.add(quad.subject.value)
-        pipelineTerms.add(quad.object.value)
-    }
-
     const store = RdfStore.createDefault()
     for (const quad of pipelineQuads) {
         store.addQuad(quad)
@@ -75,15 +58,6 @@ export function inferProvenance(
             rdfjs: true,
             onDerived: ({ quad }) => {
                 if (!quad) {
-                    return
-                }
-
-                // Keep only derivations anchored to a pipeline entity, dropping
-                // triples derived purely from within the ontology.
-                if (
-                    !pipelineTerms.has(quad.subject.value) &&
-                    !pipelineTerms.has(quad.object.value)
-                ) {
                     return
                 }
 

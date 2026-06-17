@@ -8,7 +8,7 @@ import * as grpc from '@grpc/grpc-js'
 import { NamedNode } from 'n3'
 import { emptyPipeline, Pipeline, PipelineShape, SmallProc } from './model'
 import { collapseLast, getLoggerFor } from './logUtil'
-import { Channels, Definitions, Instantiator, parse_processors } from '.'
+import { Channels, Definitions, Instantiator, parse_processors, PROV } from '.'
 import { jsonld_to_string, RDFC, walkJson } from './util'
 import { Quad } from '@rdfjs/types'
 
@@ -25,12 +25,7 @@ import {
 import { envReplace, LensError } from 'rdf-lens'
 import { Logger } from 'winston'
 import { promisify } from 'util'
-import {
-    dateTimeLiteral,
-    PROV_ENDED_AT_TIME,
-    PROV_GENERATED_AT_TIME,
-    PROV_STARTED_AT_TIME,
-} from './provenance'
+import { dateTimeLiteral } from './provenance'
 import { DataFactory } from 'rdf-data-factory'
 
 const df = new DataFactory()
@@ -547,7 +542,7 @@ export class Orchestrator implements Callbacks {
                     quads.push(
                         df.quad(
                             proc.id,
-                            PROV_STARTED_AT_TIME,
+                            PROV.terms.startedAtTime,
                             dateTimeLiteral(this.processorsStartedAt),
                         ),
                     )
@@ -556,7 +551,7 @@ export class Orchestrator implements Callbacks {
                     quads.push(
                         df.quad(
                             proc.id,
-                            PROV_ENDED_AT_TIME,
+                            PROV.terms.endedAtTime,
                             dateTimeLiteral(this.processorsEndedAt),
                         ),
                     )
@@ -568,7 +563,7 @@ export class Orchestrator implements Callbacks {
             quads.push(
                 df.quad(
                     df.namedNode(channel),
-                    PROV_GENERATED_AT_TIME,
+                    PROV.terms.generatedAtTime,
                     dateTimeLiteral(closedAt),
                 ),
             )

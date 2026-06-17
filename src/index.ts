@@ -8,14 +8,11 @@ import {
 import { Orchestrator } from './orchestrator'
 import { Server } from './server'
 import { pathToFileURL } from 'url'
-import { readQuads } from './util'
+import { RDFC, readQuads } from './util'
 import { Writer } from 'n3'
 import { modelShapes } from './model'
 import { Cont, empty } from 'rdf-lens'
 import { inferProvenance, writeProvenance } from './provenance'
-
-/** IRI of the RDF-Connect ontology, used as input for provenance reasoning. */
-const RDFC_ONTOLOGY = 'https://w3id.org/rdf-connect#'
 
 export * from './jsonld'
 export * from './logUtil'
@@ -75,7 +72,7 @@ export async function start(
     // Provenance metadata is always computed so it can later be exposed in the
     // pipeline itself. The RDF-Connect ontology is fetched fresh as it lives in
     // a separate repository, and is only used as reasoning input.
-    const ontologyQuads = await readQuads([RDFC_ONTOLOGY])
+    const ontologyQuads = await readQuads([RDFC.namespace])
     const provenanceQuads = inferProvenance(quads, ontologyQuads)
 
     reevaluteLevels()
@@ -84,13 +81,25 @@ export async function start(
 
     await orchestrator.startInstantiators(
         addr,
-        new Writer().quadsToString(quads),
+        new Writer({
+            prefixes: getPrefixes(),
+        }).quadsToString(provenanceQuads),
     )
 
     await orchestrator.startProcessors()
 
+    // Already save provenance after starting the pipeline.
+    if (provenanceLocation) {
+        await writeProvenance(
+            provenanceQuads,
+            provenanceLocation,
+            getPrefixes(),
+        )
+    }
+
     await orchestrator.waitClose()
 
+    // Save the full provenance with timing provenance on completion.
     if (provenanceLocation) {
         const timingQuads = orchestrator.getProvenanceTimingQuads()
         await writeProvenance(
