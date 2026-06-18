@@ -41,6 +41,11 @@ npx rdfc path/to/your/pipeline.ttl
 
 The CLI tool loads the RDF pipeline configuration, starts the gRPC server, spawns the configured runners, initializes processors, and manages the entire pipeline lifecycle.
 
+In addition to the command above, the CLI also supports the following parameters:
+
+- `--port`: Port number on which to initialize the gRPC server (default: 50051)
+- `--provenance`: Filesystem path to store the provenance metadata to. No provenance is stored when not specified.
+
 ## Configuration
 
 Pipeline configurations are defined using RDF/Turtle format. Here's an example configuration:
