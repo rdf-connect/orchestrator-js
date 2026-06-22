@@ -82,6 +82,80 @@ Pipeline configurations are defined using RDF/Turtle format. Here's an example c
 
 ```
 
+## Supported Instantiators
+
+Currently the orchestrator can communicate with two runners, a local one that is started by the orchestrator with a cli command, and a remote runner.
+
+
+### Command Runner
+
+The command runner is instantiated by the orchestrator with a specific CLI command, appended with the gRPC endpoint and runner identifier concatenated.
+The runner should, when it is started, connect with the provided endpoint and follow the RDF-Connect protocol.
+
+```turtle
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+
+# Configuration example
+rdfc:NodeRunner a rdfc:Runner;
+    # The Node runner supports JavaScript processors
+  rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
+    # Start the Node runner with the following command
+  rdfc:command "npx js-runner" .
+
+[ ] a sh:NodeShape;
+  sh:targetSubjectsOf rdfc:jsImplementationOf;
+  # Remainded of a shape definition that the processors should adhere to
+  .
+```
+
+### Remote Runner
+
+The remote runner is a server which accepts HTTP calls.
+Such a call indicates a new pipeline, the server then connects with the orchestrator with the provided endpoint URL.
+The POST'ed JSON contains the endpoint URL and the runner identifier.
+
+```typescript
+{
+    host: string,
+    uri: string,
+}
+```
+
+Example configuration
+```turtle
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+
+# Configuration example
+<runner> a rdfc:HttpRunner;
+    # The Node runner supports JavaScript processors
+  rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
+    # Start the Node runner by posting to this endpoint
+  rdfc:endpoint <./connect>.
+```
+
+This enables the user to configure the pipeline just like a normal pipeline.
+
+
+```turtle
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+
+# the endpoint serving the example configuration 
+@prefix runner: <http://localhost:3000/>.
+
+# import the runner and the processor definitions
+<> owl:imports runner:, runner:processors.ttl.
+
+# setup the pipeline
+<> a rdfc:Pipeline;
+  rdfc:consistsOf [
+    rdfc:processor <logProc>, <sendProc>;
+    rdfc:instantiates runner:runner;
+  ].
+```
+
+
 ## Development
 
 ### Prerequisites
