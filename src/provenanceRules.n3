@@ -1,0 +1,45 @@
+# subclass rule
+{
+    ?S a ?A.
+    ?A rdfs:subClassOf ?B.
+} => {
+    ?S a ?B.
+}.
+
+{ ?P rdfs:subClassOf ?Q.
+  ?Q rdfs:subClassOf ?R. }
+    => { ?P rdfs:subClassOf ?R. }.
+
+# subproperty rule
+{ ?P rdfs:subPropertyOf ?Q.
+  ?S ?P ?O. }
+    => { ?S ?Q ?O. }.
+
+{ ?P rdfs:subPropertyOf ?Q.
+  ?Q rdfs:subPropertyOf ?R. }
+    => { ?P rdfs:subPropertyOf ?R. }.
+
+# inverse rule
+{ ?P owl:inverseOf ?Q.
+  ?S ?P ?O. }
+    => { ?O ?Q ?S. }.
+
+{
+  ?P a rdfc:Processor.
+  ?C a rdfc:Reader.
+  ?P ?input ?C.
+  ?S sh:path ?input;
+     sh:class rdfc:Reader.
+} => {
+  ?P prov:used ?C.
+}.
+
+{
+  ?P a rdfc:Processor.
+  ?C a rdfc:Writer.
+  ?P ?output ?C.
+  ?S sh:path ?output;
+     sh:class rdfc:Writer.
+} => {
+  ?P prov:generated ?C.
+}.

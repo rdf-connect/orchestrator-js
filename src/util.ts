@@ -1,12 +1,17 @@
 import { JsonLdParser } from 'jsonld-streaming-parser'
 import { Context, Document, modelQuads } from '.'
-import { Quad } from '@rdfjs/types'
+import { NamedNode as NN, Quad } from '@rdfjs/types'
 import { NamedNode, Parser, PrefixCallback } from 'n3'
-import { createNamespace, createTermNamespace } from '@treecg/types'
+import {
+    createNamespace,
+    createTermNamespace,
+    createUriAndTermNamespace,
+} from '@treecg/types'
 import { readFile } from 'fs/promises'
 import { getLoggerFor, prefixFound } from './logUtil'
 
 import JSZip from 'jszip'
+import { Namespace } from '@treecg/types/dist/lib/Vocabularies'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 const logger = getLoggerFor(['util.ts'])
@@ -16,6 +21,23 @@ export const RDFC = createNamespace(
     (x) => x,
     'Reader',
     'Writer',
+)
+
+export const PROV: Namespace<
+    ('startedAtTime' | 'endedAtTime' | 'generatedAtTime')[],
+    string,
+    string
+> & {
+    terms: Namespace<
+        ('startedAtTime' | 'endedAtTime' | 'generatedAtTime')[],
+        NN,
+        string
+    >
+} = createUriAndTermNamespace(
+    'http://www.w3.org/ns/prov#',
+    'startedAtTime',
+    'endedAtTime',
+    'generatedAtTime',
 )
 
 /**

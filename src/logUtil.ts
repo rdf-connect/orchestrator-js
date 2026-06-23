@@ -24,6 +24,18 @@ export const prefixFound: PrefixCallback = (prefix, node) => {
     prefixes.push({ prefix, node: node.value })
 }
 
+/**
+ * Returns the prefixes collected while parsing the input files as a record
+ * mapping prefix to namespace IRI. Later occurrences win on duplicate prefixes.
+ */
+export function getPrefixes(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const { prefix, node } of prefixes) {
+        out[prefix] = node
+    }
+    return out
+}
+
 const DEBUG_ENV = (process.env.DEBUG || '').toLowerCase()
 const LOG_LEVEL_ENV = process.env.LOG_LEVEL
 export function collapse(node: string): string[] {
