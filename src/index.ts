@@ -4,23 +4,23 @@ import {
     getPrefixes,
     reevaluteLevels,
     setPipelineFile,
-} from './logUtil'
-import { Orchestrator } from './orchestrator'
-import { Server } from './server'
+} from './logUtil.js'
+import { Orchestrator } from './orchestrator.js'
+import { Server } from './server.js'
 import { pathToFileURL } from 'url'
-import { RDFC, readQuads } from './util'
+import { RDFC, readQuads } from './util.js'
 import { Writer } from 'n3'
-import { modelShapes } from './model'
+import { modelShapes } from './model.js'
 import { Cont, empty } from 'rdf-lens'
-import { inferProvenance, writeProvenance } from './provenance'
+import { inferProvenance, writeProvenance } from './provenance.js'
 
-export * from './jsonld'
-export * from './logUtil'
-export * from './model'
-export * from './orchestrator'
-export * from './instantiator'
-export * from './server'
-export * from './util'
+export * from './jsonld.js'
+export * from './logUtil.js'
+export * from './model.js'
+export * from './orchestrator.js'
+export * from './instantiator.js'
+export * from './server.js'
+export * from './util.js'
 
 /**
  * Initializes and starts the orchestrator with the specified pipeline configuration.

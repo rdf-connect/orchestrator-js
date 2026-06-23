@@ -12,13 +12,13 @@ import {
     ReceivingStreamMessage,
     ToRunner,
 } from '@rdfc/proto'
-import { Orchestrator } from './orchestrator'
+import { Orchestrator } from './orchestrator.js'
 import { spawn } from 'child_process'
 import { Quad, Term } from '@rdfjs/types'
-import { Definitions } from './jsonld'
-import { SmallProc } from './model'
-import { jsonld_to_string } from './util'
-import { getLoggerFor } from './logUtil'
+import { Definitions } from './jsonld.js'
+import { SmallProc } from './model.js'
+import { jsonld_to_string } from './util.js'
+import { getLoggerFor } from './logUtil.js'
 import { Logger } from 'winston'
 
 export type Sender<T> = {

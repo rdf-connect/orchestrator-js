@@ -7,14 +7,14 @@
 import * as grpc from '@grpc/grpc-js'
 import { promisify } from 'util'
 import { FromRunner, LogMessage, RunnerServer, ToRunner } from '@rdfc/proto'
-import { getLoggerFor } from './logUtil'
+import { getLoggerFor } from './logUtil.js'
 import {
     DataChunk,
     ReceivingStreamControl,
     SendingStreamControl,
     StreamChunk,
-} from '@rdfc/proto/lib/generated/common'
-import { Orchestrator } from './orchestrator'
+} from '@rdfc/proto/lib/generated/common.js'
+import { Orchestrator } from './orchestrator.js'
 
 /**
  * gRPC Server implementation for handling runner connections and message routing.

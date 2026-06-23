@@ -1,5 +1,5 @@
 import { JsonLdParser } from 'jsonld-streaming-parser'
-import { Context, Document, modelQuads } from '.'
+import { Context, Document, modelQuads } from './index.js'
 import { NamedNode as NN, Quad } from '@rdfjs/types'
 import { NamedNode, Parser, PrefixCallback } from 'n3'
 import {
@@ -8,10 +8,10 @@ import {
     createUriAndTermNamespace,
 } from '@treecg/types'
 import { readFile } from 'fs/promises'
-import { getLoggerFor, prefixFound } from './logUtil'
+import { getLoggerFor, prefixFound } from './logUtil.js'
 
 import JSZip from 'jszip'
-import { Namespace } from '@treecg/types/dist/lib/Vocabularies'
+import { Namespace } from '@treecg/types/dist/lib/Vocabularies.js'
 
 const OWL = createTermNamespace('http://www.w3.org/2002/07/owl#', 'imports')
 const logger = getLoggerFor(['util.ts'])
