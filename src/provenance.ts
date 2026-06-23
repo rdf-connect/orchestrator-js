@@ -8,7 +8,7 @@ import stringifyStream from 'stream-to-string'
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
 import { DataFactory } from 'rdf-data-factory'
 import { RdfStore } from 'rdf-stores'
-import { getLoggerFor } from './logUtil'
+import { getLoggerFor } from './logUtil.js'
 
 const df: RDF.DataFactory = new DataFactory()
 const provenanceRules = $INLINE_FILE('./provenanceRules.n3')

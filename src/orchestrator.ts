@@ -6,10 +6,16 @@
 
 import * as grpc from '@grpc/grpc-js'
 import { NamedNode } from 'n3'
-import { emptyPipeline, Pipeline, PipelineShape, SmallProc } from './model'
-import { collapseLast, getLoggerFor } from './logUtil'
-import { Channels, Definitions, Instantiator, parse_processors, PROV } from '.'
-import { jsonld_to_string, RDFC, walkJson } from './util'
+import { emptyPipeline, Pipeline, PipelineShape, SmallProc } from './model.js'
+import { collapseLast, getLoggerFor } from './logUtil.js'
+import {
+    Channels,
+    Definitions,
+    Instantiator,
+    parse_processors,
+    PROV,
+} from './index.js'
+import { jsonld_to_string, RDFC, walkJson } from './util.js'
 import { Quad } from '@rdfjs/types'
 
 import {
@@ -25,7 +31,7 @@ import {
 import { envReplace, LensError } from 'rdf-lens'
 import { Logger } from 'winston'
 import { promisify } from 'util'
-import { dateTimeLiteral } from './provenance'
+import { dateTimeLiteral } from './provenance.js'
 import { DataFactory } from 'rdf-data-factory'
 
 const df = new DataFactory()

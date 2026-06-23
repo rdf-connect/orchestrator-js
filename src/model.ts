@@ -13,7 +13,7 @@ import {
     Instantiator,
     InstantiatorConfig,
     TestInstantiator,
-} from './instantiator'
+} from './instantiator.js'
 
 /**
  * Represents a complete processing pipeline configuration.

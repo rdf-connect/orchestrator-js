@@ -16,7 +16,7 @@ import {
     SHACL,
     XSD,
 } from '@treecg/types'
-import { collapseLast } from './logUtil'
+import { collapseLast } from './logUtil.js'
 
 /**
  * RDFL namespace with common RDF Lens terms.
