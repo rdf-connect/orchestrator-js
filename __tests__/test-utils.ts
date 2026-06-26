@@ -1,11 +1,11 @@
 /**
  * Test utilities for orchestrator testing
  */
-import { createAsyncIterable } from '../lib/util'
-import { Server } from '../lib/server'
-import { expandQuads, Orchestrator, TestInstantiator } from '../lib'
+import { createAsyncIterable } from '../lib/util.js'
+import { Server } from '../lib/server.js'
+import { expandQuads, Orchestrator, TestInstantiator } from '../lib/index.js'
 import { Cont, empty } from 'rdf-lens'
-import { modelShapes } from '../lib/model'
+import { modelShapes } from '../lib/model.js'
 import path from 'path'
 import { Parser } from 'n3'
 import { FromRunner, ToRunner } from '@rdfc/proto'

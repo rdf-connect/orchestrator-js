@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { Quad, Term } from '@rdfjs/types'
-import { Document, parse_processors } from '../lib/index'
-import { jsonld_to_quads } from '../lib/util'
+import { Document, parse_processors } from '../lib/index.js'
+import { jsonld_to_quads } from '../lib/util.js'
 import { NamedNode, Parser, Writer } from 'n3'
 
 function parse_quads(inp: string): Quad[] {

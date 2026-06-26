@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from 'vitest'
-import { OrchestratorTestFixture } from './test-utils'
-import { TestInstantiator } from '../lib'
+import { OrchestratorTestFixture } from './test-utils.js'
+import { TestInstantiator } from '../lib/index.js'
 
 const types: ('name' | 'codeIdentifier' | 'mixed')[] = [
     'name',
