@@ -56,6 +56,7 @@ export function inferProvenance(
         },
         {
             rdfjs: true,
+            skipUnsupportedRdfJs: true,
             onDerived: ({ quad }) => {
                 if (!quad) {
                     return
