@@ -95,28 +95,29 @@ function parseArgs(args) {
     return { port, portExplicit, location, provenanceLocation }
 }
 
+let parsed
 try {
-    const { port, portExplicit, location, provenanceLocation } = parseArgs(
-        process.argv.slice(),
-    )
-
-    resolvePort(port, portExplicit)
-        .then((resolvedPort) =>
-            start(location, resolvedPort, provenanceLocation),
-        )
-        .catch((ex) => {
-            if (ex instanceof Error) {
-                console.error(ex.stack)
-            } else {
-                console.error('An error happened')
-                console.error(ex)
-            }
-            process.exit(1)
-        })
+    parsed = parseArgs(process.argv.slice())
 } catch (ex) {
     const msg = ex instanceof Error ? ex.message : ex
     console.error('Incorrect cli usage:', msg)
     console.error(
         `Please use ${process.argv[0]} ${process.argv[1]} [-p PORT] PIPELINE.TTL`,
     )
+    process.exit(1)
+}
+
+const { port, portExplicit, location, provenanceLocation } = parsed
+
+try {
+    const resolvedPort = await resolvePort(port, portExplicit)
+    await start(location, resolvedPort, provenanceLocation)
+} catch (ex) {
+    if (ex instanceof Error) {
+        console.error(ex.stack)
+    } else {
+        console.error('An error happened')
+        console.error(ex)
+    }
+    process.exit(1)
 }
