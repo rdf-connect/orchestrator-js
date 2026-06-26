@@ -9,10 +9,12 @@ import { Orchestrator } from './orchestrator.js'
 import { Server } from './server.js'
 import { pathToFileURL } from 'url'
 import { RDFC, readQuads } from './util.js'
-import { Writer } from 'n3'
 import { modelShapes } from './model.js'
 import { Cont, empty } from 'rdf-lens'
 import { inferProvenance, writeProvenance } from './provenance.js'
+import stringifyStream from 'stream-to-string'
+import { rdfSerializer } from 'rdf-serialize'
+import { streamifyArray } from 'streamify-array'
 
 export * from './jsonld.js'
 export * from './logUtil.js'
@@ -81,9 +83,12 @@ export async function start(
 
     await orchestrator.startInstantiators(
         addr,
-        new Writer({
-            prefixes: getPrefixes(),
-        }).quadsToString(provenanceQuads),
+        await stringifyStream(
+            rdfSerializer.serialize(streamifyArray(provenanceQuads), {
+                path: location,
+                prefixes: getPrefixes(),
+            }),
+        ),
     )
 
     await orchestrator.startProcessors()
