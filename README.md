@@ -101,7 +101,7 @@ The runner must, when it is started, connect with the provided endpoint and foll
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 
 # Configuration example
-rdfc:NodeRunner a rdfc:Runner;
+rdfc:NodeRunner a rdfc:CommandRunner;
     # The Node runner supports JavaScript processors
   rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
     # Start the Node runner with the following command

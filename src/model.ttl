@@ -43,7 +43,7 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:Runner;
+  sh:targetClass rdfc:Runner, rdfc:CommandRunner;
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;
