@@ -44,21 +44,10 @@ export class TestOrchestratorServer extends Server {
 
         this.runnerConnections.set(runnerId, connection)
 
-        // Set up the orchestrator lens for RDF processing
-        modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
-            empty<Cont>().map(() => this.orchestrator)
-
-        // Set up the channel for the runner
-        const runnerConnected = this.orchestrator.onConnectingRunners[runnerId]
-        if (runnerConnected) {
-            runnerConnected({
-                sendMessage: {
-                    write: connection.sendMessage,
-                    close: connection.close,
-                },
-                receiveMessage: connection.receiveMessages,
-            })
-        }
+        this.orchestrator.connectRunner(runnerId, {
+            sendMessage: { write: connection.sendMessage },
+            receiveMessage: connection.receiveMessages,
+        })
 
         return connection
     }

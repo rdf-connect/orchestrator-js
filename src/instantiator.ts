@@ -23,7 +23,6 @@ import { Logger } from 'winston'
 
 export type Sender<T> = {
     write: (msg: T) => Promise<unknown>
-    close: () => void | Promise<void>
 }
 
 /**
@@ -65,7 +64,6 @@ export abstract class Instantiator {
     /** Function to send messages to the runner */
     protected sendMessage: Sender<ToRunner> = {
         write: async () => {},
-        close: async () => {},
     }
 
     /**
@@ -317,6 +315,58 @@ export class CommandInstantiator extends Instantiator {
         child.on('close', (code) => {
             this.logger.info(`exited with code ${code}`)
         })
+    }
+}
+
+/**
+ * An Instantiator implementation that connects to a remote js-runner-2 server via plain TCP.
+ *
+ * The orchestrator opens a TCP connection to the runner's grpcPort, sends the runner URI,
+ * and the runner reverse-upgrades this TCP socket as the gRPC transport back to the orchestrator.
+ * The orchestrator injects its end of the socket into the gRPC server so it is handled as an
+ * incoming runner connection.
+ */
+export class HttpInstantiator extends Instantiator {
+    readonly grpcPort: number
+
+    /**
+     * Called by the orchestrator setup to wire newly-created sockets into the gRPC server.
+     * Set before `start()` is called.
+     */
+    injectConnection: (socket: import('net').Socket) => void = () => {}
+
+    constructor(config: InstantiatorConfig & { grpcPort: number }) {
+        super(config)
+        this.grpcPort = config.grpcPort
+        this.logger.debug('Built an HTTP runner!')
+    }
+
+    async start(addr: string): Promise<void> {
+        // Derive the runner host from the runner's own URI (e.g. http://runner-host:3000/jsRunner)
+        let host: string
+        try {
+            host = new URL(this.id.value).hostname
+        } catch {
+            // Fall back to the orchestrator's advertised host if the runner URI is not a valid URL
+            host = addr.split(':')[0]
+        }
+
+        this.logger.info(
+            `Opening TCP connection to ${host}:${this.grpcPort} for runner ${this.id.value}`,
+        )
+
+        const net = await import('net')
+        const socket = await new Promise<import('net').Socket>((resolve, reject) => {
+            const s = net.createConnection({ port: this.grpcPort, host })
+            s.once('connect', () => resolve(s))
+            s.once('error', reject)
+        })
+
+        // Send the runner URI so the remote side knows which pipeline this is for
+        socket.write(this.id.value + '\n')
+
+        // Hand the socket to the gRPC server — it will treat it as an incoming connection
+        this.injectConnection(socket)
     }
 }
 

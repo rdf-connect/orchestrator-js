@@ -11,6 +11,7 @@ import { pathToFileURL } from 'url'
 import { RDFC, readQuads } from './util.js'
 import { modelShapes } from './model.js'
 import { Cont, empty } from 'rdf-lens'
+import { HttpInstantiator } from './instantiator.js'
 import { inferProvenance, writeProvenance } from './provenance.js'
 import stringifyStream from 'stream-to-string'
 import { rdfSerializer } from 'rdf-serialize'
@@ -37,10 +38,11 @@ export * from './util.js'
  * @throws {Error} For other runtime errors during startup
  *
  * Process Flow:
- * 1. Initializes gRPC server and orchestrator instance
- * 2. Binds the gRPC server to the specified port (default: 50051)
- * 3. Loads and parses the pipeline configuration
- * 4. Sets up the pipeline with the loaded configuration
+ * 1. Loads and parses the pipeline configuration
+ * 2. Initializes gRPC server and orchestrator instance
+ * 3. Binds the gRPC server to the main port (default: 50051)
+ * 4. For rdfc:HttpRunner instances, wires a ConnectionInjector so the orchestrator's
+ *    outgoing TCP socket (to the runner's grpcPort) is handled as an incoming gRPC connection
  * 5. Starts all runners and processors
  * 6. Waits for the pipeline to complete
  * 7. Handles graceful shutdown
@@ -57,16 +59,7 @@ export async function start(
     setupOrchestratorLens(orchestrator)
 
     grpcServer.addService(RunnerService, server.server)
-    await new Promise((res) =>
-        grpcServer.bindAsync(
-            '0.0.0.0:' + port,
-            grpc.ServerCredentials.createInsecure(),
-            res,
-        ),
-    )
 
-    const addr = 'localhost:' + port
-    logger.info('Grpc server is bound! ' + addr)
     const iri = pathToFileURL(location)
     setPipelineFile(iri)
     const quads = await readQuads([iri.toString()])
@@ -79,7 +72,34 @@ export async function start(
 
     reevaluteLevels()
     logger.debug('Setting pipeline')
-    orchestrator.setPipeline(quads, iri.toString())
+    await orchestrator.setPipeline(quads, iri.toString())
+
+    // Bind the main gRPC port
+    const connectionString = '0.0.0.0:' + port
+    await new Promise((res) =>
+        grpcServer.bindAsync(
+            connectionString,
+            grpc.ServerCredentials.createInsecure(),
+            res,
+        ),
+    )
+
+    const host = process.env.RDFC_ADVERTISE_HOST ?? 'localhost'
+    const addr = host + ':' + port
+    logger.info('Grpc server is bound! ' + addr)
+
+    // Wire socket injection for any rdfc:HttpRunner instances.
+    // The injector lets the gRPC server handle a pre-established TCP socket as an
+    // incoming runner connection, avoiding a separate HTTP /connect round-trip.
+    const injector = grpcServer.createConnectionInjector(
+        grpc.ServerCredentials.createInsecure(),
+    )
+    for (const part of orchestrator.pipeline.parts) {
+        if (part.instantiator instanceof HttpInstantiator) {
+            part.instantiator.injectConnection = (socket) =>
+                injector.injectConnection(socket)
+        }
+    }
 
     await orchestrator.startInstantiators(
         addr,
@@ -114,14 +134,9 @@ export async function start(
         )
     }
 
-    grpcServer.tryShutdown((e) => {
-        if (e !== undefined) {
-            logger.error(e)
-            process.exit(1)
-        } else {
-            process.exit(0)
-        }
-    })
+    injector.drain(500)
+    grpcServer.drain(connectionString, 500)
+    process.exit(0)
 }
 
 /**

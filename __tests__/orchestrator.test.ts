@@ -48,8 +48,18 @@ for (const processorType of types) {
                 } as never
                 fixture.orchestrator.pipeline.parts.forEach((part) => {
                     part.processors.forEach((processor) => {
+                        // `buildProcessorArgs` is an internal helper; cast to
+                        // reach it from the test without widening the public API.
                         const args = JSON.parse(
-                            fixture.orchestrator.getArguments(
+                            (
+                                fixture.orchestrator as unknown as {
+                                    buildProcessorArgs: (
+                                        proc: unknown,
+                                        instantiator: unknown,
+                                        checker: unknown,
+                                    ) => string
+                                }
+                            ).buildProcessorArgs(
                                 processor,
                                 part.instantiator,
                                 stateMock,
