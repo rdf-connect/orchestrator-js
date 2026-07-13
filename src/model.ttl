@@ -65,7 +65,7 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:HttpRunner;
+  sh:targetClass rdfc:TcpRunner;
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;

@@ -41,11 +41,9 @@ export * from './util.js'
  * 1. Loads and parses the pipeline configuration
  * 2. Initializes gRPC server and orchestrator instance
  * 3. Binds the gRPC server to the main port (default: 50051)
- * 4. For rdfc:HttpRunner instances, wires a ConnectionInjector so the orchestrator's
- *    outgoing TCP socket (to the runner's grpcPort) is handled as an incoming gRPC connection
- * 5. Starts all runners and processors
- * 6. Waits for the pipeline to complete
- * 7. Handles graceful shutdown
+ * 4. Starts all runners and processors
+ * 5. Waits for the pipeline to complete
+ * 6. Handles graceful shutdown
  */
 export async function start(
     location: string,

@@ -41,12 +41,31 @@ const decoder = new TextDecoder()
 
 /**
  * Defines the callback interface for handling messages and connection closures.
+ * @interface Callbacks
+ * @property {Function} msg - Callback for processing incoming messages
+ * @property {Function} close - Callback for handling connection closures
  */
 export type Callbacks = {
+    /**
+     * Handles incoming messages from runners.
+     * @param {SendingMessage} msg - The received message
+     * @param {() => void} onEnd - Callback to be called when the receiving runner indicates that the message has been handled
+     * @returns {Promise<void>}
+     */
     msg: (msg: SendingMessage, onEnd: () => Promise<void>) => Promise<void>
+    /**Add a comment on  line L55Add diff commentMarkdown input:  edit mode selected.WritePreviewHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceMore Formatting tools items 0Saved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a review
+     * Handles connection closures.
+     * @param {Close} close - Close event details
+     * @returns {Promise<void>}
+     */
     close: (close: Close) => Promise<void>
 }
 
+/**
+ * Type guard to check if a pipeline is defined as a string.
+ * @param {Pipeline | string} pipeline - The pipeline to check
+ * @returns {boolean} True if the pipeline is a string
+ */
 function pipelineIsString(pipeline: Pipeline | string): pipeline is string {
     return typeof pipeline === 'string' || pipeline instanceof String
 }
@@ -66,11 +85,21 @@ class MessageRouter {
     private readonly channels = new Map<string, Instantiator>()
     private readonly closed = new Set<string>()
     private readonly logFns = new Map<string, (msg: string) => void>()
+    /**
+     * Maps the messageId to resolving promise callback functions.
+     * Invoking the callback indicates the message has been handled
+     */
     private readonly pendingAcks = new Map<number, () => Promise<void>>()
+    /**
+     * Maps the messageId to connecting streams promise callbacks.
+     * Invoking the callback indicates the receiving stream handler is attached
+     */
     private readonly pendingStreams = new Map<
         number,
         (stream: ReceivingStream) => void
     >()
+
+    /** Global message count, runners send message with their localSequenceNumber, which is translated to this globalSequenceNumber */
     private sequenceNumber = 0
 
     nextSequence(): number {
@@ -137,8 +166,14 @@ class MessageRouter {
  * and open channel promises.
  */
 class RunnerRegistry {
+    /** Maps runner URIs to their instantiator instances and promise resolution callbacks */
     private readonly runners = new Map<string, Instantiator>()
+    /**
+     * Maps the runner id to promise callbacks.
+     * Invoking the callback indicates the runner is attached
+     */
     private readonly pending = new Map<string, (channels: Channels) => void>()
+    /** Collection of all open channel connections from runners */
     private readonly channelPromises: Promise<unknown>[] = []
 
     register(instantiator: Instantiator) {
@@ -153,7 +188,10 @@ class RunnerRegistry {
         return [...this.runners.keys()]
     }
 
-    /** Sets up a promise that resolves when the runner connects via gRPC. */
+    /**
+     * Creates a promise that resolves when the specified runner connects.
+     * Used to wait for runner initialization before proceeding with pipeline setup.
+     */
     awaitConnection(instantiator: Instantiator): Promise<void> {
         return new Promise((resolve) => {
             this.pending.set(instantiator.id.value, (channels) => {
@@ -186,8 +224,11 @@ class RunnerRegistry {
 export class Orchestrator implements Callbacks {
     protected readonly logger = getLoggerFor([this])
 
+    /** Current pipeline configuration */
     pipeline: Pipeline = emptyPipeline
+    /** RDF quads representing the current pipeline */
     quads: Quad[] = []
+    /** Processor definitions parsed from the pipeline */
     definitions: Definitions = {}
 
     private readonly router = new MessageRouter()
@@ -204,7 +245,20 @@ export class Orchestrator implements Callbacks {
 
     // ── Pipeline Setup ──────────────────────────────────────────────────
 
+    /**
+     * Sets the pipeline configuration from a URI.
+     * @param {Quad[]} quads - RDF quads representing the pipeline
+     * @param {string} uri - URI of the pipeline configuration
+     * @returns {void}
+     */
     setPipeline(quads: Quad[], uri: string): PromiseLike<void>
+    /**
+     * Sets the pipeline configuration with provided pipeline and definitions.
+     * @param {Quad[]} quads - RDF quads representing the pipeline
+     * @param {Pipeline} pipeline - The pipeline configuration
+     * @param {Definitions} definitions - Processor definitions
+     * @returns {void}
+     */
     setPipeline(
         quads: Quad[],
         pipeline: Pipeline,
@@ -242,7 +296,10 @@ export class Orchestrator implements Callbacks {
     }
 
     // ── Runner Lifecycle ────────────────────────────────────────────────
-
+    /**
+     * Establishes communication channels for a connected runner.
+     * Sets up the runner's channel configuration and completes the connection promise.
+     */
     connectRunner(uri: string, channels: Channels) {
         if (!this.runners.connect(uri, channels)) {
             this.logger.error(
@@ -251,6 +308,14 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Initializes and starts all runners in the pipeline.
+     * Process Flow:
+     * For each part in the pipeline:
+     *    a. Registers the runner with the server
+     *    b. Starts the runner with the provided address
+     *    c. Sends the pipeline configuration to the runner
+     */
     async startInstantiators(addr: string, pipeline: string) {
         const resolved = await Promise.allSettled(
             this.pipeline.parts.map(async (part) => {
@@ -279,6 +344,9 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Waits for all runners in the pipeline to complete their execution.
+     */
     async waitClose() {
         await this.runners.waitAllClosed()
         this.processorsEndedAt = new Date()
@@ -286,6 +354,13 @@ export class Orchestrator implements Callbacks {
 
     // ── Message Handling ────────────────────────────────────────────────
 
+    /**
+     * Processes an incoming message by forwarding it to the receiving runner.
+     *
+     * @param {SendingMessage} msg - The message to process
+     * @param {() => Promise<void>} onEnd - callback called when the message has been processed by the runner
+     * @returns {Promise<void>}
+     */
     async msg(msg: SendingMessage, onEnd: () => Promise<void>): Promise<void> {
         this.logger.debug('Got data message for channel ' + msg.channel)
 
@@ -310,6 +385,13 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Handles message processing completion notifications.
+     * Called when a message has been processed by the target instantiators.
+     *
+     * @param {GlobalAck} msg - The message processing notification
+     * @returns {void}
+     */
     async processed(msg: GlobalAck) {
         const cb = this.router.resolveAck(msg.globalSequenceNumber)
         if (cb) {
@@ -324,6 +406,13 @@ export class Orchestrator implements Callbacks {
         }
     }
 
+    /**
+     * Handles connection closure for a specific channel.
+     * Propagates the close event to all runners in the pipeline.
+     *
+     * @param {Close} close - Close event details including the channel identifier
+     * @returns {Promise<void>}
+     */
     async close(close: Close) {
         this.logger.debug('Got close message for channel ' + close.channel)
         if (!this.channelClosedAt.has(close.channel)) {
@@ -447,6 +536,10 @@ export class Orchestrator implements Callbacks {
         return seq
     }
 
+    /**
+     * Establishes a connection for receiving streaming data.
+     * Links the stream writer to the connecting stream identified by the message globalSequenceNumber.
+     */
     onReceivingStreamConnected(
         globalSequenceNumber: number,
         stream: ReceivingStream,
@@ -516,6 +609,21 @@ export class Orchestrator implements Callbacks {
         return quads
     }
 
+    /**
+     * Initializes and starts all processors in the pipeline.
+     *
+     * @returns {Promise<void>}
+     * @throws {Array<Error>} If any processor fails to start
+     *
+     * Process Flow:
+     * 1. For each part in the pipeline:
+     *    a. For each processor in the part:
+     *       i. Attempts to add the processor to the runner
+     *       ii. Collects any errors that occur
+     * 2. If any errors occurred:
+     *    a. Logs each error
+     *    b. Throws an array of all errors
+     */
     async startProcessors() {
         this.logger.debug(
             'Starting ' +
@@ -563,7 +671,11 @@ export class Orchestrator implements Callbacks {
     }
 
     // ── Private Helpers ─────────────────────────────────────────────────
-
+    /**
+     * Generates configuration arguments for a processor based on its RDF definition.
+     * Creates a JSON-LD document with the processor configuration and tracks channel mappings.
+     * It also keeps track of the channels, linking the Reader parts to the runner that should receive the messages.
+     */
     private buildProcessorArgs(
         proc: SmallProc,
         instantiator: Instantiator,

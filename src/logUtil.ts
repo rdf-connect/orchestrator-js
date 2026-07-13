@@ -1,5 +1,5 @@
 import { NamedNode, Quad } from '@rdfjs/types'
-import { NamedNode as NN, PrefixCallback, Writer } from 'n3'
+import { PrefixCallback, Writer, DataFactory } from 'n3'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import winston, { format, Logger } from 'winston'
@@ -30,7 +30,7 @@ export function prettyTurtle(triples: Quad[]): Promise<string> {
         [key: string]: NamedNode
     } = {}
     for (const p of prefixes) {
-        localPrefixes[p.prefix] = new NN(p.node)
+        localPrefixes[p.prefix] = DataFactory.namedNode(p.node)
     }
     const writer = new Writer({ prefixes: localPrefixes })
     writer.addQuads(triples)
