@@ -89,7 +89,7 @@ Pipeline configurations are defined using RDF/Turtle format. Here's an example c
 
 ## Supported Instantiators
 
-Currently, the orchestrator can communicate with two types of runners, local ones that are started by the orchestrator using a CLI command, and remote runners for which a server is assumed to be online upon pipeline execution. 
+Currently, the orchestrator can communicate with two types of runners, local ones that are started by the orchestrator using a CLI command, and remote runners for which a server is assumed to be online upon pipeline execution.
 
 ### Command Runner
 
@@ -126,9 +126,9 @@ Example configuration
 
 # Configuration example
 <jsRunner> a rdfc:TcpRunner;
-    # The JS runner supports JavaScript processors
+  # The JS runner supports JavaScript processors
   rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
-    # TCP address (host:port) of the remote runner that the orchestrator connects to
+  # TCP address (host:port) of the remote runner that the orchestrator connects to
   rdfc:grpc "localhost:4001".
 ```
 
@@ -217,6 +217,7 @@ orchestrator-js/
 │   ├── model.ts            # Data models and types
 │   ├── model.ttl           # RDF model definitions
 │   ├── orchestrator.ts     # Core orchestrator logic
+│   ├── orchestrator_state.ts  # State management for orchestrator logic
 │   ├── provenance.ts       # PROV-O provenance generation
 │   ├── provenanceRules.n3  # N3 rules for provenance inference
 │   ├── server.ts           # gRPC server implementation
