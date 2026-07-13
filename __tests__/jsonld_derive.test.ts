@@ -343,7 +343,7 @@ ex:collection a ex:Collection;
         string: '42',
         iri: 'http://example.org/ns#fourtyTwo',
         nested: {
-            '@id': '_:n3-89',
+            '@id': '_:n3-90',
             '@type': 'http://example.org/ns#SimpleShape',
             '@context': simpleShapeContext,
             string: '43',
@@ -424,7 +424,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-89',
+                '@id': '_:n3-90',
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -559,7 +559,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-89',
+                '@id': '_:n3-90',
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -699,7 +699,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-89',
+                '@id': '_:n3-90',
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {

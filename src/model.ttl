@@ -73,9 +73,9 @@ _:id sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
   ], [
-    sh:path rdfc:grpcPort;
-    sh:name "grpcPort";
-    sh:datatype xsd:integer;
+    sh:path rdfc:grpc;
+    sh:name "grpc";
+    sh:datatype xsd:string;
     sh:maxCount 1;
     sh:minCount 1;
   ], [
@@ -84,6 +84,12 @@ _:id sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
     sh:class rdfc:Orchestrator;
+  ], [
+    sh:path ( );
+    sh:name "injector";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Injector;
   ].
 
 [ ] a sh:NodeShape;

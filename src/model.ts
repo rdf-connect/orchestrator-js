@@ -10,11 +10,12 @@ import { NamedNode, Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
 import {
     CommandInstantiator,
-    HttpInstantiator,
+    TcpInstantiator,
     Instantiator,
     InstantiatorConfig,
     TestInstantiator,
-} from './instantiator.js'
+} from './instantiators/index.js'
+import { grpc } from '@rdfc/proto'
 
 /**
  * Represents a complete processing pipeline configuration.
@@ -83,9 +84,12 @@ export const modelShapes = extractShapes(modelQuads, {
     'https://w3id.org/rdf-connect#Runner': (
         inp: InstantiatorConfig & { command: string },
     ) => new CommandInstantiator(inp),
-    'https://w3id.org/rdf-connect#HttpRunner': (
-        inp: InstantiatorConfig & { grpcPort: number },
-    ) => new HttpInstantiator(inp),
+    'https://w3id.org/rdf-connect#TcpRunner': (
+        inp: InstantiatorConfig & {
+            grpc: string
+            injector: grpc.ConnectionInjector
+        },
+    ) => new TcpInstantiator(inp),
     'https://w3id.org/rdf-connect#TestRunner': (inp: InstantiatorConfig) =>
         new TestInstantiator(inp),
 })

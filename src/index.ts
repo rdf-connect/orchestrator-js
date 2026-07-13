@@ -11,17 +11,17 @@ import { pathToFileURL } from 'url'
 import { RDFC, readQuads } from './util.js'
 import { modelShapes } from './model.js'
 import { Cont, empty } from 'rdf-lens'
-import { HttpInstantiator } from './instantiator.js'
 import { inferProvenance, writeProvenance } from './provenance.js'
 import stringifyStream from 'stream-to-string'
 import { rdfSerializer } from 'rdf-serialize'
 import { streamifyArray } from 'streamify-array'
+import { ConnectionInjector } from '@grpc/grpc-js'
 
 export * from './jsonld.js'
 export * from './logUtil.js'
 export * from './model.js'
 export * from './orchestrator.js'
-export * from './instantiator.js'
+export * from './instantiators/index.js'
 export * from './server.js'
 export * from './util.js'
 
@@ -56,7 +56,12 @@ export async function start(
     const grpcServer = new grpc.Server()
     const orchestrator = new Orchestrator()
     const server = new Server(orchestrator)
-    setupOrchestratorLens(orchestrator)
+
+    const injector = grpcServer.createConnectionInjector(
+        grpc.ServerCredentials.createInsecure(),
+    )
+
+    setupOrchestratorLens(orchestrator, injector)
 
     grpcServer.addService(RunnerService, server.server)
 
@@ -87,19 +92,6 @@ export async function start(
     const host = process.env.RDFC_ADVERTISE_HOST ?? 'localhost'
     const addr = host + ':' + port
     logger.info('Grpc server is bound! ' + addr)
-
-    // Wire socket injection for any rdfc:HttpRunner instances.
-    // The injector lets the gRPC server handle a pre-established TCP socket as an
-    // incoming runner connection, avoiding a separate HTTP /connect round-trip.
-    const injector = grpcServer.createConnectionInjector(
-        grpc.ServerCredentials.createInsecure(),
-    )
-    for (const part of orchestrator.pipeline.parts) {
-        if (part.instantiator instanceof HttpInstantiator) {
-            part.instantiator.injectConnection = (socket) =>
-                injector.injectConnection(socket)
-        }
-    }
 
     await orchestrator.startInstantiators(
         addr,
@@ -134,16 +126,31 @@ export async function start(
         )
     }
 
+    // Let the connections know they should start shutting down
     injector.drain(500)
     grpcServer.drain(connectionString, 500)
-    process.exit(0)
+
+    // Actually shut down the server
+    grpcServer.tryShutdown((e) => {
+        if (e !== undefined) {
+            logger.error(e)
+            process.exit(1)
+        } else {
+            process.exit(0)
+        }
+    })
 }
 
 /**
  * Sets up the RDF lens mapping for the Orchestrator class.
  * Maps the rdfc:Orchestrator RDF type to this orchestrator instance for RDF processing.
  */
-function setupOrchestratorLens(orchestrator: Orchestrator) {
+function setupOrchestratorLens(
+    orchestrator: Orchestrator,
+    injector: ConnectionInjector,
+) {
     modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)
+    modelShapes.lenses['https://w3id.org/rdf-connect#Injector'] =
+        empty<Cont>().map(() => injector)
 }
