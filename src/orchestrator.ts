@@ -52,7 +52,7 @@ export type Callbacks = {
      * @returns {Promise<void>}
      */
     msg: (msg: SendingMessage, onEnd: () => Promise<void>) => Promise<void>
-    /**Add a comment on  line L55Add diff commentMarkdown input:  edit mode selected.WritePreviewHeadingBoldItalicQuoteCodeLinkUnordered listNumbered listTask listMentionReferenceMore Formatting tools items 0Saved repliesAdd FilesPaste, drop, or click to add filesCancelCommentStart a review
+    /**
      * Handles connection closures.
      * @param {Close} close - Close event details
      * @returns {Promise<void>}

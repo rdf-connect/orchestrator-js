@@ -119,7 +119,7 @@ The remote runner is a server that is assumed to already be online when the pipe
 Instead of starting a process, the orchestrator opens a plain TCP connection to the runner's configured `rdfc:grpc` address, writes the runner URI (terminated by a newline) so the runner knows which pipeline the connection is for, and then hands that socket to its own gRPC server.
 The runner reverse-upgrades the same TCP socket into a gRPC channel back to the orchestrator, after which the pipeline proceeds over the RDF-Connect protocol just like a local runner.
 
-Example configuration
+Example configuration of a remote runner definition.
 
 ```turtle
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
@@ -132,14 +132,20 @@ Example configuration
   rdfc:grpc "localhost:4001".
 ```
 
-The runner server, enables the user to configure the pipeline just like a normal pipeline.
+This is can be used when the runner exposes an HTTP endpoint (in this example `localhost:3000`) with this configuration and the processor definitions at `http://localhost:3000/processors.ttl`.
+This enables the user to configure the pipeline just like a normal pipeline.
+
+An example pipeline configuration using a js runner server is given below:
 
 ```turtle
 @prefix owl: <http://www.w3.org/2002/07/owl#>.
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
 
 # import the runner and the processor definitions
-<> owl:imports <http://localhost:3000/>, <http://localhost:3000/processors.ttl>.
+<> owl:imports <http://localhost:3000/>.
+
+# import the processor definitions
+<> owl:imports <http://localhost:3000/processors.ttl>.
 
 # setup the pipeline
 <> a rdfc:Pipeline;

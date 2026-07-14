@@ -24,6 +24,7 @@ export class TcpInstantiator extends Instantiator {
     ) {
         super(config)
         this.grpc = config.grpc
+        this.injector = config.injector
         this.logger.debug('Built an TCP runner!')
     }
 
