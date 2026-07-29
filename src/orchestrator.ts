@@ -176,18 +176,26 @@ export class Orchestrator implements Callbacks {
      *    c. Sends the pipeline configuration to the runner
      */
     async startInstantiators(addr: string, pipeline: string) {
+        const timeoutMs = 5000
         const resolved = await Promise.allSettled(
-            this.pipeline.parts
-                .map(async (part) => {
-                    const instantiator = part.instantiator
-                    this.runners.register(instantiator)
+            this.pipeline.parts.map((part) => {
+                const instantiator = part.instantiator
+                this.runners.register(instantiator)
 
-                    const connected = this.runners.awaitConnection(instantiator)
+                const attempt = async () => {
+                    const connected =
+                        this.runners.awaitConnection(instantiator)
                     await instantiator.start(addr)
                     await connected
                     await instantiator.sendPipeline(pipeline)
-                })
-                .map((prom) => withTimeout(prom, 5000)),
+                }
+
+                return withTimeout(
+                    attempt(),
+                    timeoutMs,
+                    `Instantiator '${instantiator.id.value}' failed to connect back to the orchestrator within ${timeoutMs}ms`,
+                )
+            }),
         )
 
         const errors = resolved

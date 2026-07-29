@@ -134,6 +134,11 @@ for (const processorType of types) {
                     .mockImplementation(() => {
                         throw new Error('process.exit called')
                     }) as unknown as (code?: number) => never
+                const errorSpy = vi.spyOn(
+                    (fixture.orchestrator as unknown as { logger: Console })
+                        .logger,
+                    'error',
+                )
 
                 try {
                     const startPromise =
@@ -145,7 +150,8 @@ for (const processorType of types) {
 
                     // Only connect the first runner back to the orchestrator;
                     // leave the second one hanging so it never calls back.
-                    const [firstPart] = fixture.orchestrator.pipeline.parts
+                    const [firstPart, secondPart] =
+                        fixture.orchestrator.pipeline.parts
                     fixture.server.connectTestRunner(
                         firstPart.instantiator.id.value,
                     )
@@ -157,6 +163,25 @@ for (const processorType of types) {
                         'process.exit called',
                     )
                     expect(exitSpy).toHaveBeenCalledWith(1)
+
+                    // The logged error should identify exactly which
+                    // instantiator failed to connect back, not just that
+                    // *something* timed out.
+                    const loggedMessages = errorSpy.mock.calls
+                        .flat()
+                        .map((arg) =>
+                            arg instanceof Error ? arg.message : String(arg),
+                        )
+                    expect(
+                        loggedMessages.some((msg) =>
+                            msg.includes(secondPart.instantiator.id.value),
+                        ),
+                    ).toBe(true)
+                    expect(
+                        loggedMessages.some((msg) =>
+                            msg.includes(firstPart.instantiator.id.value),
+                        ),
+                    ).toBe(false)
                 } finally {
                     exitSpy.mockRestore()
                     vi.useRealTimers()

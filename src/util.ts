@@ -246,11 +246,15 @@ export function createAsyncIterable<T>() {
     }
 }
 
-export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+export function withTimeout<T>(
+    promise: Promise<T>,
+    ms: number,
+    message?: string,
+): Promise<T> {
     let timer: ReturnType<typeof setTimeout>
     const timeout = new Promise<T>((_, reject) => {
         timer = setTimeout(
-            () => reject(new Error(`Timed out after ${ms}ms`)),
+            () => reject(new Error(message ?? `Timed out after ${ms}ms`)),
             ms,
         )
     })
