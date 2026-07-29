@@ -15,7 +15,7 @@ import {
     parse_processors,
     PROV,
 } from './index.js'
-import { jsonld_to_string, RDFC, walkJson } from './util.js'
+import { jsonld_to_string, RDFC, walkJson, withTimeout } from './util.js'
 import { Quad } from '@rdfjs/types'
 
 import {
@@ -177,15 +177,17 @@ export class Orchestrator implements Callbacks {
      */
     async startInstantiators(addr: string, pipeline: string) {
         const resolved = await Promise.allSettled(
-            this.pipeline.parts.map(async (part) => {
-                const instantiator = part.instantiator
-                this.runners.register(instantiator)
+            this.pipeline.parts
+                .map(async (part) => {
+                    const instantiator = part.instantiator
+                    this.runners.register(instantiator)
 
-                const connected = this.runners.awaitConnection(instantiator)
-                await instantiator.start(addr)
-                await connected
-                await instantiator.sendPipeline(pipeline)
-            }),
+                    const connected = this.runners.awaitConnection(instantiator)
+                    await instantiator.start(addr)
+                    await connected
+                    await instantiator.sendPipeline(pipeline)
+                })
+                .map((prom) => withTimeout(prom, 5000)),
         )
 
         const errors = resolved
@@ -644,7 +646,7 @@ export class Orchestrator implements Callbacks {
         } catch (ex) {
             this.logger.error('Writing /tmp/expanded.ttl failed')
             if (ex instanceof Error) {
-                this.logger.error(ex.name, ex.message, ex.cause)
+                this.logger.error(`${ex.name}: ${ex.message}\n${ex.cause}`)
             } else {
                 this.logger.error(JSON.stringify(ex))
             }

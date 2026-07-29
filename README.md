@@ -132,7 +132,7 @@ Example configuration of a remote runner definition.
   rdfc:grpc "localhost:4001".
 ```
 
-This is can be used when the runner exposes an HTTP endpoint (in this example `localhost:3000`) with this configuration and the processor definitions at `http://localhost:3000/processors.ttl`.
+This can be used when the runner exposes an HTTP endpoint (in this example `localhost:3000`) with this configuration and the processor definitions at `http://localhost:3000/processors.ttl`.
 This enables the user to configure the pipeline just like a normal pipeline.
 
 An example pipeline configuration using a js runner server is given below:

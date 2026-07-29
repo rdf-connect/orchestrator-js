@@ -120,7 +120,7 @@ export class OrchestratorTestFixture {
             new Parser({ baseIRI: iri }).parse(pipelineConfig),
         )
 
-        this.orchestrator.setPipeline(quads, iri)
+        await this.orchestrator.setPipeline(quads, iri)
     }
 
     /**
