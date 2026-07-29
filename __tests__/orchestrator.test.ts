@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from 'vitest'
+import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest'
 import { OrchestratorTestFixture } from './test-utils.js'
 import { TestInstantiator } from '../lib/index.js'
 
@@ -123,6 +123,44 @@ for (const processorType of types) {
                 expect(runner2.messages.length).toBe(
                     initialRunner2MessageCount + 1,
                 )
+            })
+        })
+
+        describe('Instantiator Connection Failures', () => {
+            test('startInstantiators fails when an instantiator never connects back', async () => {
+                vi.useFakeTimers()
+                const exitSpy = vi
+                    .spyOn(process, 'exit')
+                    .mockImplementation(() => {
+                        throw new Error('process.exit called')
+                    }) as unknown as (code?: number) => never
+
+                try {
+                    const startPromise =
+                        fixture.orchestrator.startInstantiators('', '')
+                    // Attach a handler immediately so the rejection raised
+                    // once the fake timer fires below is never briefly
+                    // unhandled.
+                    startPromise.catch(() => {})
+
+                    // Only connect the first runner back to the orchestrator;
+                    // leave the second one hanging so it never calls back.
+                    const [firstPart] = fixture.orchestrator.pipeline.parts
+                    fixture.server.connectTestRunner(
+                        firstPart.instantiator.id.value,
+                    )
+
+                    // Fast-forward past the instantiator connection timeout.
+                    await vi.advanceTimersByTimeAsync(5000)
+
+                    await expect(startPromise).rejects.toThrow(
+                        'process.exit called',
+                    )
+                    expect(exitSpy).toHaveBeenCalledWith(1)
+                } finally {
+                    exitSpy.mockRestore()
+                    vi.useRealTimers()
+                }
             })
         })
 
