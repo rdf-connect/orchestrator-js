@@ -157,7 +157,7 @@ for (const processorType of types) {
                     )
 
                     // Fast-forward past the instantiator connection timeout.
-                    await vi.advanceTimersByTimeAsync(5000)
+                    await vi.advanceTimersByTimeAsync(30_000)
 
                     await expect(startPromise).rejects.toThrow(
                         'process.exit called',

@@ -8,20 +8,22 @@ const DEFAULT_PORT = 50051
 
 /**
  * Checks whether the given TCP port is available to bind on 0.0.0.0.
+ * Resolves `false` only when the port is already occupied; any other
+ * bind failure (e.g. permission errors) rejects so callers can tell
+ * the two apart.
  *
  * @param {number} port
  * @returns {Promise<boolean>}
  */
 function isPortAvailable(port) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const tester = net
             .createServer()
             .once('error', (err) => {
                 if (err.code === 'EADDRINUSE') {
                     resolve(false)
                 } else {
-                    // Treat any other error as the port not being usable.
-                    resolve(false)
+                    reject(err)
                 }
             })
             .once('listening', () => {
@@ -35,8 +37,9 @@ function isPortAvailable(port) {
  * Resolves the port to bind on.
  *
  * If the port was not explicitly specified, starts from the default port and
- * increments until a free port is found. If the port was explicitly specified
- * and is already in use, an error is thrown.
+ * increments until a free port is found, skipping any port that can't be
+ * bound for any reason. If the port was explicitly specified and can't be
+ * bound, an error describing why is thrown.
  *
  * @param {number} port
  * @param {boolean} explicit - Whether the port was provided via CLI arguments
@@ -44,7 +47,19 @@ function isPortAvailable(port) {
  */
 async function resolvePort(port, explicit) {
     if (explicit) {
-        if (!(await isPortAvailable(port))) {
+        let available
+        try {
+            available = await isPortAvailable(port)
+        } catch (ex) {
+            if (ex && ex.code === 'EACCES') {
+                throw new Error(
+                    `Permission denied to bind port ${port} (try a port above 1024, or run with elevated privileges)`,
+                    { cause: ex },
+                )
+            }
+            throw ex
+        }
+        if (!available) {
             throw new Error(`Port ${port} is already in use`)
         }
         return port
@@ -52,7 +67,8 @@ async function resolvePort(port, explicit) {
 
     let candidate = port
     while (candidate < 65536) {
-        if (await isPortAvailable(candidate)) {
+        const available = await isPortAvailable(candidate).catch(() => false)
+        if (available) {
             return candidate
         }
         candidate++

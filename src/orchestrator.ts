@@ -32,6 +32,8 @@ import { envReplace, LensError } from 'rdf-lens'
 import { Logger } from 'winston'
 import { promisify } from 'util'
 import { writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { dateTimeLiteral } from './provenance.js'
 import { DataFactory } from 'rdf-data-factory'
 import { MessageRouter, RunnerRegistry } from './orchestrator_state.js'
@@ -129,7 +131,7 @@ export class Orchestrator implements Callbacks {
         definitions?: Definitions,
     ) {
         this.quads = envReplace().execute(quads)
-        this.definitions = definitions ?? parse_processors(quads)
+        this.definitions = definitions ?? parse_processors(this.quads)
 
         this.logger.debug(
             'Found definitions ' +
@@ -140,12 +142,12 @@ export class Orchestrator implements Callbacks {
             try {
                 this.pipeline = PipelineShape.execute({
                     id: new NamedNode(pipeline),
-                    quads,
+                    quads: this.quads,
                 })
             } catch (ex: unknown) {
                 if (ex instanceof LensError) {
                     this.logLensError(ex)
-                    await this.dumpExpandedPipeline(quads)
+                    await this.dumpExpandedPipeline(this.quads)
                 }
                 throw ex
             }
@@ -176,15 +178,14 @@ export class Orchestrator implements Callbacks {
      *    c. Sends the pipeline configuration to the runner
      */
     async startInstantiators(addr: string, pipeline: string) {
-        const timeoutMs = 5000
+        const timeoutMs = 30_000
         const resolved = await Promise.allSettled(
             this.pipeline.parts.map((part) => {
                 const instantiator = part.instantiator
                 this.runners.register(instantiator)
 
                 const attempt = async () => {
-                    const connected =
-                        this.runners.awaitConnection(instantiator)
+                    const connected = this.runners.awaitConnection(instantiator)
                     await instantiator.start(addr)
                     await connected
                     await instantiator.sendPipeline(pipeline)
@@ -522,6 +523,8 @@ export class Orchestrator implements Callbacks {
             }
         }
 
+        checker.check()
+
         const errors = (await Promise.allSettled(startPromises))
             .filter((x) => x.status === 'rejected')
             .map((x) => x.reason)
@@ -647,12 +650,13 @@ export class Orchestrator implements Callbacks {
     }
 
     private async dumpExpandedPipeline(quads: Quad[]) {
+        const dumpPath = join(tmpdir(), 'expanded.ttl')
         try {
             const tts = await prettyTurtle(quads)
-            await writeFile('/tmp/expanded.ttl', tts, { encoding: 'utf-8' })
-            this.logger.error('Expanded pipeline written to /tmp/expanded.ttl')
+            await writeFile(dumpPath, tts, { encoding: 'utf-8' })
+            this.logger.error(`Expanded pipeline written to ${dumpPath}`)
         } catch (ex) {
-            this.logger.error('Writing /tmp/expanded.ttl failed')
+            this.logger.error(`Writing ${dumpPath} failed`)
             if (ex instanceof Error) {
                 this.logger.error(`${ex.name}: ${ex.message}\n${ex.cause}`)
             } else {

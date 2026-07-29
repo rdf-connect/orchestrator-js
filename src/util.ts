@@ -136,11 +136,26 @@ async function parseArchive(
     return quads
 }
 
+const REMOTE_FETCH_TIMEOUT_MS = 10_000
+
 async function fetchResource(url: URL): Promise<Uint8Array | ArrayBuffer> {
     if (url.protocol === 'file:') {
         return readFile(url)
     } else if (url.protocol === 'http:' || url.protocol === 'https:') {
-        const resp = await fetch(url)
+        let resp: Response
+        try {
+            resp = await fetch(url, {
+                signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS),
+            })
+        } catch (ex) {
+            if (ex instanceof Error && ex.name === 'TimeoutError') {
+                throw new Error(
+                    `Timed out after ${REMOTE_FETCH_TIMEOUT_MS}ms fetching ${url.toString()}`,
+                    { cause: ex },
+                )
+            }
+            throw ex
+        }
         logger.debug(
             `${url.toString()} status ${resp.status} ${resp.statusText}`,
         )

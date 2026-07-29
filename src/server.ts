@@ -74,8 +74,16 @@ export class Server {
                 stream.on('close', () => {
                     closed = true
                 })
-                stream.on('error', () => {
+                stream.on('error', (err: Error & { code?: unknown }) => {
                     closed = true
+                    if (err.code !== 'ABORT_ERR' && err.code !== 'CANCELLED') {
+                        this.logger.debug(
+                            'Unexpected stream error: ' +
+                                err.name +
+                                ' ' +
+                                err.message,
+                        )
+                    }
                 })
 
                 const write = promisify(stream.write.bind(stream))
