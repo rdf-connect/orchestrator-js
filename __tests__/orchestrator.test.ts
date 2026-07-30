@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from 'vitest'
+import { describe, expect, test, beforeEach, afterEach, vi } from 'vitest'
 import { OrchestratorTestFixture } from './test-utils.js'
 import { TestInstantiator } from '../lib/index.js'
 
@@ -48,8 +48,18 @@ for (const processorType of types) {
                 } as never
                 fixture.orchestrator.pipeline.parts.forEach((part) => {
                     part.processors.forEach((processor) => {
+                        // `buildProcessorArgs` is an internal helper; cast to
+                        // reach it from the test without widening the public API.
                         const args = JSON.parse(
-                            fixture.orchestrator.getArguments(
+                            (
+                                fixture.orchestrator as unknown as {
+                                    buildProcessorArgs: (
+                                        proc: unknown,
+                                        instantiator: unknown,
+                                        checker: unknown,
+                                    ) => string
+                                }
+                            ).buildProcessorArgs(
                                 processor,
                                 part.instantiator,
                                 stateMock,
@@ -113,6 +123,69 @@ for (const processorType of types) {
                 expect(runner2.messages.length).toBe(
                     initialRunner2MessageCount + 1,
                 )
+            })
+        })
+
+        describe('Instantiator Connection Failures', () => {
+            test('startInstantiators fails when an instantiator never connects back', async () => {
+                vi.useFakeTimers()
+                const exitSpy = vi
+                    .spyOn(process, 'exit')
+                    .mockImplementation(() => {
+                        throw new Error('process.exit called')
+                    }) as unknown as (code?: number) => never
+                const errorSpy = vi.spyOn(
+                    (fixture.orchestrator as unknown as { logger: Console })
+                        .logger,
+                    'error',
+                )
+
+                try {
+                    const startPromise =
+                        fixture.orchestrator.startInstantiators('', '')
+                    // Attach a handler immediately so the rejection raised
+                    // once the fake timer fires below is never briefly
+                    // unhandled.
+                    startPromise.catch(() => {})
+
+                    // Only connect the first runner back to the orchestrator;
+                    // leave the second one hanging so it never calls back.
+                    const [firstPart, secondPart] =
+                        fixture.orchestrator.pipeline.parts
+                    fixture.server.connectTestRunner(
+                        firstPart.instantiator.id.value,
+                    )
+
+                    // Fast-forward past the instantiator connection timeout.
+                    await vi.advanceTimersByTimeAsync(30_000)
+
+                    await expect(startPromise).rejects.toThrow(
+                        'process.exit called',
+                    )
+                    expect(exitSpy).toHaveBeenCalledWith(1)
+
+                    // The logged error should identify exactly which
+                    // instantiator failed to connect back, not just that
+                    // *something* timed out.
+                    const loggedMessages = errorSpy.mock.calls
+                        .flat()
+                        .map((arg) =>
+                            arg instanceof Error ? arg.message : String(arg),
+                        )
+                    expect(
+                        loggedMessages.some((msg) =>
+                            msg.includes(secondPart.instantiator.id.value),
+                        ),
+                    ).toBe(true)
+                    expect(
+                        loggedMessages.some((msg) =>
+                            msg.includes(firstPart.instantiator.id.value),
+                        ),
+                    ).toBe(false)
+                } finally {
+                    exitSpy.mockRestore()
+                    vi.useRealTimers()
+                }
             })
         })
 

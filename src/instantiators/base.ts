@@ -12,40 +12,14 @@ import {
     ReceivingStreamMessage,
     ToRunner,
 } from '@rdfc/proto'
-import { Orchestrator } from './orchestrator.js'
-import { spawn } from 'child_process'
+import { Orchestrator } from '../orchestrator.js'
 import { Quad, Term } from '@rdfjs/types'
-import { Definitions } from './jsonld.js'
-import { SmallProc } from './model.js'
-import { jsonld_to_string } from './util.js'
-import { getLoggerFor } from './logUtil.js'
+import { Definitions } from '../jsonld.js'
+import { SmallProc } from '../model.js'
+import { jsonld_to_string } from '../util.js'
+import { getLoggerFor } from '../logUtil.js'
 import { Logger } from 'winston'
-
-export type Sender<T> = {
-    write: (msg: T) => Promise<unknown>
-    close: () => void | Promise<void>
-}
-
-/**
- * Defines the communication channels between runner and orchestrator.
- */
-export type Channels = {
-    sendMessage: Sender<ToRunner>
-    receiveMessage: AsyncIterable<FromRunner>
-}
-
-/**
- * Configuration for initializing an Instantiator.
- * @typedef {Object} InstantiatorConfig
- * @property {Term} id - Unique identifier for the instantiator
- * @property {Term} handles - The type of processors this runner can handle
- * @property {Orchestrator} orchestrator - Reference to the parent orchestrator
- */
-export type InstantiatorConfig = {
-    id: Term
-    handles: Term
-    orchestrator: Orchestrator
-}
+import { Channels, InstantiatorConfig, Sender } from './index.js'
 
 /**
  * Abstract base class for all instantiator implementations.
@@ -65,7 +39,6 @@ export abstract class Instantiator {
     /** Function to send messages to the runner */
     protected sendMessage: Sender<ToRunner> = {
         write: async () => {},
-        close: async () => {},
     }
 
     /**
@@ -262,129 +235,5 @@ export abstract class Instantiator {
         })
 
         await processorIsInit
-    }
-}
-
-/**
- * An Instantiator implementation that starts a runner from an external command.
- * Manages the lifecycle of external runner processes.
- */
-export class CommandInstantiator extends Instantiator {
-    /** The command that starts this runner */
-    private command: string
-
-    /**
-     * Creates a new CommandInstantiator instance.
-     * @param {InstantiatorConfig & { command: string }} config - Instantiator configuration including the command to execute
-     */
-    constructor(config: InstantiatorConfig & { command: string }) {
-        super(config)
-        this.command = config.command
-        this.logger.debug('Built a command runner!')
-    }
-
-    /**
-     * Starts the command runner by executing the configured command.
-     * Sets up stdout/stderr handlers and manages the child process.
-     *
-     * @param {string} addr - The address to connect to
-     * @returns {Promise<void>}
-     */
-    async start(addr: string) {
-        const uri = this.id.value
-        // const args = parse(this.command) as string[]
-        // args.push(addr, uri)
-
-        let args = this.command.slice()
-        args += ' ' + addr + ' ' + uri
-
-        this.logger.info('debug msg should follow')
-        this.logger.debug(
-            'starting with ' + JSON.stringify(['bash', ['-l', '-c', args]]),
-        )
-        const child = spawn('bash', ['-l', '-c', args])
-
-        child.stdout.on('data', (data) => {
-            this.logger.debug(
-                'From command ' + (<string>data.toString()).trim(),
-            )
-        })
-
-        child.stderr.on('data', (data) => {
-            this.logger.error((<string>data.toString()).trim())
-        })
-
-        child.on('close', (code) => {
-            this.logger.info(`exited with code ${code}`)
-        })
-    }
-}
-
-/**
- * A test implementation of the Instantiator interface for testing purposes.
- * Simulates runner instantiation without executing actual processes.
- */
-export class TestInstantiator extends Instantiator {
-    /** List of processor URIs that have been started */
-    private startedProcessors: string[] = []
-
-    /**
-     * Creates a new TestInstantiator instance.
-     * @param {InstantiatorConfig} config - Instantiator configuration
-     */
-    constructor(config: InstantiatorConfig) {
-        super(config)
-        this.logger.info('Built test instantiator')
-    }
-
-    /**
-     * Simulates starting the test runner.
-     * @param {string} addr - The address to connect to
-     * @returns {Promise<void>}
-     */
-    async start(addr: string): Promise<void> {
-        this.logger.info("Test runner 'starting'", addr)
-        this.logger.info('debug msg should follow')
-        this.logger.debug('connecting with ' + addr)
-    }
-
-    /**
-     * Simulates starting all registered processors.
-     * Used for testing processor initialization.
-     * @returns {Promise<void>}
-     */
-    async mockStartProcessor(): Promise<void> {
-        this.logger.info(
-            'Mock start processors ' + JSON.stringify(this.startedProcessors),
-        )
-        for (const uri of this.startedProcessors) {
-            this.logger.info('Start processors ' + uri)
-            await this.handleMessage({ initialized: { uri } })
-        }
-    }
-
-    /**
-     * Adds a processor to this test runner and tracks it in the started processors list.
-     * Overrides the parent class method to add test-specific behavior.
-     *
-     * @param {SmallProc} proc - The processor to add
-     * @param {Quad[]} quads - RDF quads containing processor configuration
-     * @param {Definitions} discoveredShapes - Available shape definitions
-     * @param {string} args - serialized JSON-LD object representing the arguments of the processor
-     * @returns {Promise<void>} Resolves when the processor is added
-     *
-     * Process Flow:
-     * 1. Tracks the processor ID in startedProcessors for test verification
-     * 2. Delegates to parent class implementation for actual processor setup
-     * 3. Awaits the completion of processor initialization
-     */
-    async addProcessor(
-        proc: SmallProc,
-        quads: Quad[],
-        discoveredShapes: Definitions,
-        args: string,
-    ): Promise<void> {
-        this.startedProcessors.push(proc.id.value)
-        await super.addProcessor(proc, quads, discoveredShapes, args)
     }
 }

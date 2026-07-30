@@ -43,7 +43,7 @@ _:id sh:path ( );
   ].
 
 [ ] a sh:NodeShape;
-  sh:targetClass rdfc:Runner;
+  sh:targetClass rdfc:Runner, rdfc:CommandRunner;
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;
@@ -62,6 +62,34 @@ _:id sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
     sh:class rdfc:Orchestrator;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:TcpRunner;
+  sh:property _:id, [
+    sh:name "handles";
+    sh:path rdfc:handlesSubjectsOf;
+    sh:datatype xsd:iri;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:grpc;
+    sh:name "grpc";
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path ( );
+    sh:name "orchestrator";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Orchestrator;
+  ], [
+    sh:path ( );
+    sh:name "injector";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Injector;
   ].
 
 [ ] a sh:NodeShape;

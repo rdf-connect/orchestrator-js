@@ -15,12 +15,13 @@ import { inferProvenance, writeProvenance } from './provenance.js'
 import stringifyStream from 'stream-to-string'
 import { rdfSerializer } from 'rdf-serialize'
 import { streamifyArray } from 'streamify-array'
+import { ConnectionInjector } from '@grpc/grpc-js'
 
 export * from './jsonld.js'
 export * from './logUtil.js'
 export * from './model.js'
 export * from './orchestrator.js'
-export * from './instantiator.js'
+export * from './instantiators/index.js'
 export * from './server.js'
 export * from './util.js'
 
@@ -37,13 +38,12 @@ export * from './util.js'
  * @throws {Error} For other runtime errors during startup
  *
  * Process Flow:
- * 1. Initializes gRPC server and orchestrator instance
- * 2. Binds the gRPC server to the specified port (default: 50051)
- * 3. Loads and parses the pipeline configuration
- * 4. Sets up the pipeline with the loaded configuration
- * 5. Starts all runners and processors
- * 6. Waits for the pipeline to complete
- * 7. Handles graceful shutdown
+ * 1. Loads and parses the pipeline configuration
+ * 2. Initializes gRPC server and orchestrator instance
+ * 3. Binds the gRPC server to the main port (default: 50051)
+ * 4. Starts all runners and processors
+ * 5. Waits for the pipeline to complete
+ * 6. Handles graceful shutdown
  */
 export async function start(
     location: string,
@@ -54,19 +54,15 @@ export async function start(
     const grpcServer = new grpc.Server()
     const orchestrator = new Orchestrator()
     const server = new Server(orchestrator)
-    setupOrchestratorLens(orchestrator)
 
-    grpcServer.addService(RunnerService, server.server)
-    await new Promise((res) =>
-        grpcServer.bindAsync(
-            '0.0.0.0:' + port,
-            grpc.ServerCredentials.createInsecure(),
-            res,
-        ),
+    const injector = grpcServer.createConnectionInjector(
+        grpc.ServerCredentials.createInsecure(),
     )
 
-    const addr = 'localhost:' + port
-    logger.info('Grpc server is bound! ' + addr)
+    setupOrchestratorLens(orchestrator, injector)
+
+    grpcServer.addService(RunnerService, server.server)
+
     const iri = pathToFileURL(location)
     setPipelineFile(iri)
     const quads = await readQuads([iri.toString()])
@@ -79,7 +75,21 @@ export async function start(
 
     reevaluteLevels()
     logger.debug('Setting pipeline')
-    orchestrator.setPipeline(quads, iri.toString())
+    await orchestrator.setPipeline(quads, iri.toString())
+
+    // Bind the main gRPC port
+    const connectionString = '0.0.0.0:' + port
+    await new Promise((res) =>
+        grpcServer.bindAsync(
+            connectionString,
+            grpc.ServerCredentials.createInsecure(),
+            res,
+        ),
+    )
+
+    const host = process.env.RDFC_ADVERTISE_HOST ?? 'localhost'
+    const addr = host + ':' + port
+    logger.info('Grpc server is bound! ' + addr)
 
     await orchestrator.startInstantiators(
         addr,
@@ -114,6 +124,11 @@ export async function start(
         )
     }
 
+    // Let the connections know they should start shutting down
+    injector.drain(500)
+    grpcServer.drain(connectionString, 500)
+
+    // Actually shut down the server
     grpcServer.tryShutdown((e) => {
         if (e !== undefined) {
             logger.error(e)
@@ -128,7 +143,12 @@ export async function start(
  * Sets up the RDF lens mapping for the Orchestrator class.
  * Maps the rdfc:Orchestrator RDF type to this orchestrator instance for RDF processing.
  */
-function setupOrchestratorLens(orchestrator: Orchestrator) {
+function setupOrchestratorLens(
+    orchestrator: Orchestrator,
+    injector: ConnectionInjector,
+) {
     modelShapes.lenses['https://w3id.org/rdf-connect#Orchestrator'] =
         empty<Cont>().map(() => orchestrator)
+    modelShapes.lenses['https://w3id.org/rdf-connect#Injector'] =
+        empty<Cont>().map(() => injector)
 }

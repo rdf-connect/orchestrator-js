@@ -87,6 +87,74 @@ Pipeline configurations are defined using RDF/Turtle format. Here's an example c
 
 ```
 
+## Supported Instantiators
+
+Currently, the orchestrator can communicate with two types of runners, local ones that are started by the orchestrator using a CLI command, and remote runners for which a server is assumed to be online upon pipeline execution.
+
+### Command Runner
+
+The command runner is instantiated by the orchestrator with a specific CLI command, appended with the gRPC endpoint and runner identifier.
+The runner must, when it is started, connect with the provided endpoint and follow the RDF-Connect protocol.
+
+```turtle
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+
+# Configuration example
+rdfc:NodeRunner a rdfc:CommandRunner;
+    # The Node runner supports JavaScript processors
+  rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
+    # Start the Node runner with the following command
+  rdfc:command "npx js-runner" .
+
+[ ] a sh:NodeShape;
+  sh:targetSubjectsOf rdfc:jsImplementationOf;
+  # Remainder of the shape definition to which the processors should adhere
+  .
+```
+
+### Remote Runner
+
+The remote runner is a server that is assumed to already be online when the pipeline runs.
+Instead of starting a process, the orchestrator opens a plain TCP connection to the runner's configured `rdfc:grpc` address, writes the runner URI (terminated by a newline) so the runner knows which pipeline the connection is for, and then hands that socket to its own gRPC server.
+The runner reverse-upgrades the same TCP socket into a gRPC channel back to the orchestrator, after which the pipeline proceeds over the RDF-Connect protocol just like a local runner.
+
+Example configuration of a remote runner definition.
+
+```turtle
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+
+# Configuration example
+<jsRunner> a rdfc:TcpRunner;
+  # The JS runner supports JavaScript processors
+  rdfc:handlesSubjectsOf rdfc:jsImplementationOf;
+  # TCP address (host:port) of the remote runner that the orchestrator connects to
+  rdfc:grpc "localhost:4001".
+```
+
+This can be used when the runner exposes an HTTP endpoint (in this example `localhost:3000`) with this configuration and the processor definitions at `http://localhost:3000/processors.ttl`.
+This enables the user to configure the pipeline just like a normal pipeline.
+
+An example pipeline configuration using a js runner server is given below:
+
+```turtle
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+
+# import the runner and the processor definitions
+<> owl:imports <http://localhost:3000/>.
+
+# import the processor definitions
+<> owl:imports <http://localhost:3000/processors.ttl>.
+
+# setup the pipeline
+<> a rdfc:Pipeline;
+  rdfc:consistsOf [
+    rdfc:processor <logProc>, <sendProc>;
+    rdfc:instantiates <http://localhost:3000/jsRunner>;
+  ].
+```
+
 ## Development
 
 ### Prerequisites
@@ -138,36 +206,45 @@ npm run format
 
 ```
 orchestrator-js/
-├── bin/                  # Executable scripts
-│   └── orchestrator.js   # mainStream CLI entry point and pipeline executor
-├── lib/                  # Compiled JavaScript output
-├── src/                  # TypeScript source files
-│   ├── index.ts          # mainStream export file
-│   ├── instantiator.ts   # Runner instantiation logic
-│   ├── jsonld.ts         # JSON-LD utilities and RDF processing
-│   ├── jsonld.ttl        # JSON-LD processor definitions
-│   ├── logUtil.ts        # Logging utilities
-│   ├── model.ts          # Data models and types
-│   ├── model.ttl         # RDF model definitions
-│   ├── orchestrator.ts   # Core orchestrator logic
-│   ├── server.ts         # gRPC server implementation
-│   ├── util.ts           # Utility functions
-│   ├── pipeline.ttl      # Pipeline configuration schema
-│   └── minimal.ttl       # Minimal example configuration
-├── __tests__/            # Test files
+├── bin/                    # Executable scripts
+│   └── orchestrator.js     # CLI entry point and pipeline executor
+├── lib/                    # Compiled JavaScript output
+├── src/                    # TypeScript source files
+│   ├── index.ts            # Main export file and pipeline startup
+│   ├── instantiators/      # Runner instantiation logic
+│   │   ├── base.ts         # Abstract Instantiator base class
+│   │   ├── command.ts      # CommandInstantiator (local CLI runners)
+│   │   ├── tcp.ts          # TcpInstantiator (remote TCP runners)
+│   │   ├── test.ts         # TestInstantiator (used in tests)
+│   │   └── index.ts        # Instantiator config types and exports
+│   ├── jsonld.ts           # JSON-LD utilities and RDF processing
+│   ├── jsonld.ttl          # JSON-LD processor definitions
+│   ├── logUtil.ts          # Logging utilities
+│   ├── model.ts            # Data models and types
+│   ├── model.ttl           # RDF model definitions
+│   ├── orchestrator.ts     # Core orchestrator logic
+│   ├── orchestrator_state.ts  # State management for orchestrator logic
+│   ├── provenance.ts       # PROV-O provenance generation
+│   ├── provenanceRules.n3  # N3 rules for provenance inference
+│   ├── server.ts           # gRPC server implementation
+│   └── util.ts             # Utility functions
+├── __tests__/              # Test files
 │   ├── orchestrator.test.ts
 │   ├── jsonld_derive.test.ts
-│   ├── config.ttl
-│   └── ...
-├── .github/              # GitHub workflows and templates
-├── .husky/               # Git hooks
-├── package.json          # Project configuration and dependencies
-├── tsconfig.json         # TypeScript configuration
-├── jest.config.js        # Jest test configuration
-├── eslint.config.mjs     # ESLint configuration
-├── .prettierrc           # Prettier configuration
-├── .editorconfig         # Editor configuration
-└── README.md             # This file
+│   ├── test-utils.ts       # Shared test helpers
+│   ├── config-name.ttl     # Fixtures for the sh:name / sh:codeIdentifier variants
+│   ├── config-codeIdentifier.ttl
+│   ├── config-mixed.ttl
+│   └── tsconfig.json
+├── .github/                # GitHub workflows and templates
+├── .husky/                 # Git hooks
+├── package.json            # Project configuration and dependencies
+├── tsconfig.json           # TypeScript configuration
+├── vite.config.ts          # Vitest test configuration
+├── eslint.config.mjs       # ESLint configuration
+├── .prettierrc             # Prettier configuration
+├── .editorconfig           # Editor configuration
+└── README.md               # This file
 ```
 
 ## Contributing

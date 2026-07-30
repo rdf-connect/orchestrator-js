@@ -10,10 +10,12 @@ import { NamedNode, Parser } from 'n3'
 import { BasicLens, Cont, extractShapes } from 'rdf-lens'
 import {
     CommandInstantiator,
+    TcpInstantiator,
     Instantiator,
     InstantiatorConfig,
     TestInstantiator,
-} from './instantiator.js'
+} from './instantiators/index.js'
+import { grpc } from '@rdfc/proto'
 
 /**
  * Represents a complete processing pipeline configuration.
@@ -81,7 +83,21 @@ export const modelQuads = new Parser().parse(processor)
 export const modelShapes = extractShapes(modelQuads, {
     'https://w3id.org/rdf-connect#Runner': (
         inp: InstantiatorConfig & { command: string },
+    ) => {
+        console.error(
+            'Please update the dependencies to start using the rdfc:CommandRunner instead of the deprecated rdfc:Runner.',
+        )
+        return new CommandInstantiator(inp)
+    },
+    'https://w3id.org/rdf-connect#CommandRunner': (
+        inp: InstantiatorConfig & { command: string },
     ) => new CommandInstantiator(inp),
+    'https://w3id.org/rdf-connect#TcpRunner': (
+        inp: InstantiatorConfig & {
+            grpc: string
+            injector: grpc.ConnectionInjector
+        },
+    ) => new TcpInstantiator(inp),
     'https://w3id.org/rdf-connect#TestRunner': (inp: InstantiatorConfig) =>
         new TestInstantiator(inp),
 })
