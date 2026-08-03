@@ -1,6 +1,6 @@
 {
     "name": "@rdfc/orchestrator-js",
-    "version": "2.2.2-remote.1",
+    "version": "2.2.2",
     "main": "lib/index.js",
     "type": "module",
     "bin": {
