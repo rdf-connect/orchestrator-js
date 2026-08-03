@@ -56,6 +56,7 @@ export function inferProvenance(
         },
         {
             rdfjs: true,
+            // Sometimes we have `sh:path ( )` in our input. We need to skip such input as we cannot derive an OWL definition for that.
             skipUnsupportedRdfJs: true,
             onDerived: ({ quad }) => {
                 if (!quad) {
