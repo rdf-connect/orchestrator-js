@@ -137,9 +137,9 @@ describe('inferProvenance', () => {
         })
 
         test('types an execution context as both influence classes', () => {
-            expect(
-                has(quads, EX + 'ctx', RDF_TYPE, PROV + 'Association'),
-            ).toBe(true)
+            expect(has(quads, EX + 'ctx', RDF_TYPE, PROV + 'Association')).toBe(
+                true,
+            )
             expect(
                 has(quads, EX + 'ctx', RDF_TYPE, PROV + 'ActivityInfluence'),
             ).toBe(true)
@@ -180,19 +180,14 @@ describe('inferProvenance', () => {
         // provenance carried no dataflow at all.
         test('derives prov:generated from a sh:class rdfc:Writer parameter', () => {
             expect(
-                has(
-                    quads,
-                    EX + 'fetch',
-                    PROV + 'generated',
-                    EX + 'channel',
-                ),
+                has(quads, EX + 'fetch', PROV + 'generated', EX + 'channel'),
             ).toBe(true)
         })
 
         test('derives prov:used from a sh:class rdfc:Reader parameter', () => {
-            expect(
-                has(quads, EX + 'log', PROV + 'used', EX + 'channel'),
-            ).toBe(true)
+            expect(has(quads, EX + 'log', PROV + 'used', EX + 'channel')).toBe(
+                true,
+            )
         })
 
         test('does not invert the direction of the dataflow', () => {
