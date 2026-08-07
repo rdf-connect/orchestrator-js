@@ -71,7 +71,7 @@
         "eyeling": "^2.35.4",
         "jsonld-streaming-parser": "^5.0.1",
         "jszip": "^3.10.1",
-        "n3": "^2.1.2",
+        "n3": "^2.2.0",
         "rdf-data-factory": "^2.0.2",
         "rdf-lens": "^1.3.7",
         "rdf-serialize": "^5.1.0",
