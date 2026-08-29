@@ -103,6 +103,9 @@ export class OrchestratorTestFixture {
             rdfc:processor <p2>;
         ].
 
+    ex:c1 a rdfc:Reader, rdfc:Writer.
+    ex:c2 a rdfc:Reader, rdfc:Writer.
+
     <p1> a ex:Proc1;
       rdfc:input ex:c1;
       rdfc:output ex:c2 .
