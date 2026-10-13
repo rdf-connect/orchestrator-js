@@ -32,7 +32,7 @@
     sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:BlankNodeOrIRI;
   ], [
     sh:name "path";
     sh:path sh:path;
@@ -43,12 +43,22 @@
     sh:name "clazz";
     sh:path sh:class;
     sh:maxCount 1;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
   ], [
     sh:name "datatype";
     sh:path sh:datatype;
     sh:maxCount 1;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
+  ], [
+    sh:name "nodeKind";
+    sh:path sh:nodeKind;
+    sh:maxCount 1;
+    sh:nodeKind sh:IRI;
+  ], [
+    sh:name "codeType";
+    sh:path sh:codeType;
+    sh:maxCount 1;
+    sh:nodeKind sh:IRI;
   ], [
     sh:name "minCount";
     sh:path sh:minCount;
@@ -66,17 +76,17 @@
   sh:property [
     sh:name "target";
     sh:path sh:targetClass;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
   ], [
     sh:name "targetSubjects";
     sh:path sh:targetSubjectsOf;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
   ], [
     sh:name "id";
     sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:BlankNodeOrIRI;
   ], [
     sh:name "properties";
     sh:path sh:property;

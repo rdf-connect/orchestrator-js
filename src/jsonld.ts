@@ -63,6 +63,8 @@ const processorShape = <BasicLens<Cont<Term>, PlainDefinition>>(
  * @property {Quad[]} path.quads - RDF quads defining the path
  * @property {Term} [clazz] - Optional class constraint for the property
  * @property {Term} [datatype] - Optional datatype for the property values
+ * @property {Term} [nodeKind] - Optional node kind the property values must have
+ * @property {Term} [codeType] - Optional type the processor receives (sh:codeType)
  * @property {number} [minCount] - Optional minimum count constraint
  * @property {number} [maxCount] - Optional maximum count constraint
  */
@@ -74,6 +76,8 @@ export type PropertyDTO = {
     }
     clazz?: Term
     datatype?: Term
+    nodeKind?: Term
+    codeType?: Term
     minCount?: number
     maxCount?: number
 }
@@ -283,12 +287,18 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 const obj: { '@id': string; '@type'?: string } = {
                     '@id': property.path.id.value,
                 }
-                if (property.datatype) {
+                const type = property.codeType ?? property.datatype
+                if (type) {
                     obj['@type'] =
-                        property.datatype.value ===
-                        'http://www.w3.org/2001/XMLSchema#iri'
+                        type.value === 'http://www.w3.org/2001/XMLSchema#iri' ||
+                        type.value === 'http://www.w3.org/2001/XMLSchema#anyURI'
                             ? '@id'
-                            : property.datatype.value
+                            : type.value
+                } else if (
+                    property.nodeKind?.value ===
+                    'http://www.w3.org/ns/shacl#IRI'
+                ) {
+                    obj['@type'] = '@id'
                 }
                 innerCtx[property.name] = obj
             }
@@ -353,7 +363,8 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 ? [id]
                 : findMatchingObjects(quads, id, property)
 
-            if (property.clazz) {
+            // Like rdf-lens, sh:codeType goes before sh:class (SHACL 1.2)
+            if (property.clazz && !property.codeType) {
                 this.handleClazzProperty(
                     quads,
                     others,
@@ -365,9 +376,12 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 continue
             }
 
-            if (property.datatype) {
+            if (property.datatype || property.codeType || property.nodeKind) {
                 const items = values.map((v) =>
-                    handleAccordingToDatatype(v.value, property.datatype!),
+                    handleAccordingToDatatype(
+                        v.value,
+                        property.codeType ?? property.datatype,
+                    ),
                 )
 
                 out[property.name] = handleAccordingToProperty(
@@ -378,7 +392,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 continue
             }
 
-            throw 'No class nor datatype'
+            throw `No sh:class, sh:datatype, sh:nodeKind nor sh:codeType for property ${property.name}`
         }
 
         return out
@@ -433,8 +447,8 @@ function findMatchingObjects(
         })
 }
 
-function handleAccordingToDatatype(inp: string, datatype: Term) {
-    if (datatype.equals(XSD.terms.integer)) return parseInt(inp)
+function handleAccordingToDatatype(inp: string, datatype?: Term) {
+    if (datatype?.equals(XSD.terms.integer)) return parseInt(inp)
     return inp
 }
 function handleAccordingToProperty<T>(

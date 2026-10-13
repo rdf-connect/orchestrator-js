@@ -37,7 +37,7 @@ _:id sh:path ( );
   sh:property _:id, [
     sh:path rdf:type;
     sh:name "type";
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
     sh:minCount 1;
     sh:maxCount 1;
   ].
@@ -47,7 +47,7 @@ _:id sh:path ( );
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
     sh:minCount 1;
     sh:maxCount 1;
   ], [
@@ -69,7 +69,7 @@ _:id sh:path ( );
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
     sh:minCount 1;
     sh:maxCount 1;
   ], [
@@ -97,7 +97,7 @@ _:id sh:path ( );
   sh:property _:id, [
     sh:name "handles";
     sh:path rdfc:handlesSubjectsOf;
-    sh:datatype xsd:iri;
+    sh:nodeKind sh:IRI;
     sh:minCount 1;
     sh:maxCount 1;
   ], [
