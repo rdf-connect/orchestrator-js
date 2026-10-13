@@ -32,8 +32,12 @@ export abstract class Instantiator {
     readonly handles: Term
     /** Logger instance for the runner */
     protected logger: Logger
-    /** Map of processor IDs to their startup functions */
-    protected processorsStartupFns: { [id: string]: () => void } = {}
+    /** Processors the runner was asked to start, until it reports them initialized */
+    protected processorsStarting: {
+        [id: string]: { resolve: () => void; reject: (error: Error) => void }
+    } = {}
+    /** Set once the runner's stream ended: it cannot start processors anymore */
+    private endedBecause?: string
     /** Reference to the parent orchestrator */
     protected orchestrator: Orchestrator
     /** Function to send messages to the runner */
@@ -83,6 +87,31 @@ export abstract class Instantiator {
         }
 
         this.logger.info('Runner ended')
+
+        // A processor the runner did not initialize before it ended never
+        // will be, so stop waiting for it
+        this.endedBecause = `runner ${this.id.value} ended`
+        for (const uri of Object.keys(this.processorsStarting)) {
+            this.settleStartup(
+                uri,
+                new Error(
+                    `Processor ${uri} did not start: runner ${this.id.value} ended before initializing it`,
+                ),
+            )
+        }
+    }
+
+    /**
+     * Ends the wait for a processor to start, failing it when an error is
+     * given.
+     */
+    private settleStartup(uri: string, error?: Error): boolean {
+        const starting = this.processorsStarting[uri]
+        if (!starting) return false
+        delete this.processorsStarting[uri]
+        if (error) starting.reject(error)
+        else starting.resolve()
+        return true
     }
 
     /**
@@ -155,10 +184,16 @@ export abstract class Instantiator {
         if (msg.initialized) {
             const init = msg.initialized
             this.logger.debug('Runner handle init msg for ' + init.uri)
-            if (init.error) {
-                this.logger.error('Init message error ' + init.error)
+            const error = init.error
+                ? new Error(
+                      `Processor ${init.uri} failed to start: ${init.error.cause}`,
+                  )
+                : undefined
+            if (!this.settleStartup(init.uri, error)) {
+                this.logger.warn(
+                    `Runner reported processor ${init.uri} as initialized, but it was not starting`,
+                )
             }
-            this.processorsStartupFns[init.uri]()
         }
 
         if (msg.identify) {
@@ -196,7 +231,9 @@ export abstract class Instantiator {
      * @param {Definitions} discoveredShapes - Available shape definitions
      * @param {string} args - serialized JSON-LD object representing the arguments of the processor
      * @returns {Promise<void>}
-     * @throws {Error} If no shape definition is found for the processor
+     * @throws {Error} If no shape definition is found for the processor, if the
+     * runner reports that the processor failed to start, or if the runner ends
+     * before initializing it
      */
     async addProcessor(
         proc: SmallProc,
@@ -219,10 +256,15 @@ export abstract class Instantiator {
             discoveredShapes,
         )
 
-        const processorIsInit = new Promise(
-            (res) =>
-                (this.processorsStartupFns[proc.id.value] = () =>
-                    res(undefined)),
+        if (this.endedBecause) {
+            throw new Error(
+                `Processor ${proc.id.value} did not start: ${this.endedBecause} before it was added`,
+            )
+        }
+
+        const processorIsInit = new Promise<void>(
+            (resolve, reject) =>
+                (this.processorsStarting[proc.id.value] = { resolve, reject }),
         )
         const jsonldDoc = jsonld_to_string(document)
 
