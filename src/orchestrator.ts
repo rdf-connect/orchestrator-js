@@ -531,9 +531,12 @@ export class Orchestrator implements Callbacks {
 
         if (errors.length > 0) {
             for (const e of errors) {
-                this.logger.error(e)
+                this.logger.error(e instanceof Error ? e.message : e)
             }
-            throw errors
+            throw new AggregateError(
+                errors,
+                `${errors.length} of ${startPromises.length} processors failed to start`,
+            )
         }
 
         await Promise.all(
