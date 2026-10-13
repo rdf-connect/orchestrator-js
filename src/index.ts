@@ -10,7 +10,7 @@ import { Server } from './server.js'
 import { pathToFileURL } from 'url'
 import { RDFC, readQuads } from './util.js'
 import { modelShapes } from './model.js'
-import { Cont, empty } from 'rdf-lens'
+import { Cont, empty, setWarningHandler } from 'rdf-lens'
 import { inferProvenance, writeProvenance } from './provenance.js'
 import stringifyStream from 'stream-to-string'
 import { rdfSerializer } from 'rdf-serialize'
@@ -51,6 +51,9 @@ export async function start(
     provenanceLocation?: string,
 ): Promise<void> {
     const logger = getLoggerFor(['start'])
+    // Shape deprecations from rdf-lens, logged with the rest of the pipeline
+    const lensLogger = getLoggerFor(['rdf-lens'])
+    setWarningHandler((message) => lensLogger.warn(message))
     const grpcServer = new grpc.Server()
     const orchestrator = new Orchestrator()
     const server = new Server(orchestrator)
