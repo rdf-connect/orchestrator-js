@@ -3,6 +3,10 @@
 @prefix prov: <http://www.w3.org/ns/prov#>.
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix log: <http://www.w3.org/2000/10/swap/log#>.
+@prefix list: <http://www.w3.org/2000/10/swap/list#>.
+# Helper terms of these rules; inferProvenance leaves them out of its result.
+@prefix internal: <https://w3id.org/rdf-connect/provenance-rules#>.
 
 # subclass rule
 {
@@ -30,10 +34,41 @@
   ?S ?P ?O. }
     => { ?O ?Q ?S. }.
 
+# The configuration of a processor: the processor itself, and the blank nodes
+# it reaches, directly or as members of an RDF list, such as rdfc:channels [ ... ].
+# Named nodes are not followed: they are resources of their own, such as other
+# processors, and their channels are not this processor's.
 {
   ?P a rdfc:Processor.
+} => {
+  ?P internal:configuration ?P.
+}.
+
+{
+  ?P internal:configuration ?N.
+  ?N ?p ?B.
+  ?B log:rawType ?T.
+  ?T list:in (log:LabeledBlankNode log:UnlabeledBlankNode).
+} => {
+  ?P internal:configuration ?B.
+}.
+
+{
+  ?P internal:configuration ?N.
+  ?N ?p ?L.
+  ?L list:member ?B.
+  ?B log:rawType ?T.
+  ?T list:in (log:LabeledBlankNode log:UnlabeledBlankNode).
+} => {
+  ?P internal:configuration ?B.
+}.
+
+# A channel in the configuration of a processor, given directly or in a list,
+# for a parameter that its shape declares as a reader or a writer.
+{
+  ?P internal:configuration ?N.
+  ?N ?input ?C.
   ?C a rdfc:Reader.
-  ?P ?input ?C.
   ?S sh:path ?input;
      sh:class rdfc:Reader.
 } => {
@@ -41,9 +76,31 @@
 }.
 
 {
-  ?P a rdfc:Processor.
+  ?P internal:configuration ?N.
+  ?N ?input ?L.
+  ?L list:member ?C.
+  ?C a rdfc:Reader.
+  ?S sh:path ?input;
+     sh:class rdfc:Reader.
+} => {
+  ?P prov:used ?C.
+}.
+
+{
+  ?P internal:configuration ?N.
+  ?N ?output ?C.
   ?C a rdfc:Writer.
-  ?P ?output ?C.
+  ?S sh:path ?output;
+     sh:class rdfc:Writer.
+} => {
+  ?P prov:generated ?C.
+}.
+
+{
+  ?P internal:configuration ?N.
+  ?N ?output ?L.
+  ?L list:member ?C.
+  ?C a rdfc:Writer.
   ?S sh:path ?output;
      sh:class rdfc:Writer.
 } => {

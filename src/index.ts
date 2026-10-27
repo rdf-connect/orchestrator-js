@@ -11,10 +11,11 @@ import { pathToFileURL } from 'url'
 import { RDFC, readQuads } from './util.js'
 import { modelShapes } from './model.js'
 import { Cont, empty, setWarningHandler } from 'rdf-lens'
-import { inferProvenance, writeProvenance } from './provenance.js'
-import stringifyStream from 'stream-to-string'
-import { rdfSerializer } from 'rdf-serialize'
-import { streamifyArray } from 'streamify-array'
+import {
+    inferProvenance,
+    serializeQuads,
+    writeProvenance,
+} from './provenance.js'
 import { ConnectionInjector } from '@grpc/grpc-js'
 
 export * from './jsonld.js'
@@ -96,12 +97,7 @@ export async function start(
 
     await orchestrator.startInstantiators(
         addr,
-        await stringifyStream(
-            rdfSerializer.serialize(streamifyArray(provenanceQuads), {
-                path: location,
-                prefixes: getPrefixes(),
-            }),
-        ),
+        await serializeQuads(provenanceQuads, location, getPrefixes()),
     )
 
     await orchestrator.startProcessors()

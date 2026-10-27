@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { Parser } from 'n3'
 import { Quad } from '@rdfjs/types'
-import { inferProvenance } from '../lib/provenance.js'
+import { inferProvenance, serializeQuads } from '../lib/provenance.js'
 
 const PROV = 'http://www.w3.org/ns/prov#'
 const RDFC = 'https://w3id.org/rdf-connect#'
@@ -87,9 +87,53 @@ ex:log a ex:Log;
   rdfc:reader ex:channel.
 `
 
+/**
+ * Processors whose channels are not direct parameters: nested in a
+ * configuration node, given as a list, or held by named nodes that are not
+ * part of the processor's own configuration.
+ */
+const NESTED = `
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix ex: <http://example.org/#>.
+
+ex:Bucket rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Bucket;
+  sh:property [ sh:path rdfc:channels; sh:class ex:Channels ].
+[] a sh:NodeShape;
+  sh:targetClass ex:Channels;
+  sh:property [ sh:path rdfc:dataInput; sh:class rdfc:Reader ],
+              [ sh:path rdfc:dataOutput; sh:class rdfc:Writer ].
+
+ex:Merge rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Merge;
+  sh:property [ sh:path rdfc:readers; sh:class rdfc:Reader ],
+              [ sh:path rdfc:writer; sh:class rdfc:Writer ].
+
+ex:Wrapper rdfc:jsImplementationOf rdfc:Processor.
+
+ex:buckets a rdfc:Reader, rdfc:Writer.
+ex:merged a rdfc:Reader, rdfc:Writer.
+
+ex:bucketize a ex:Bucket;
+  rdfc:channels [ rdfc:dataInput ex:channel; rdfc:dataOutput ex:buckets ].
+
+ex:merge a ex:Merge;
+  rdfc:readers ( ex:channel ex:buckets );
+  rdfc:writer ex:merged.
+
+# Refers to another processor, and to a named configuration node.
+ex:wrapper a ex:Wrapper;
+  ex:delegate ex:log;
+  rdfc:channels ex:sharedChannels.
+ex:sharedChannels rdfc:dataInput ex:merged.
+`
+
 function infer(): Quad[] {
     return inferProvenance(
-        new Parser().parse(PIPELINE),
+        new Parser().parse(PIPELINE + NESTED),
         new Parser().parse(ONTOLOGY),
     )
 }
@@ -200,6 +244,54 @@ describe('inferProvenance', () => {
         })
     })
 
+    describe('dataflow through the configuration of a processor', () => {
+        test('follows a nested configuration node', () => {
+            expect(
+                has(quads, EX + 'bucketize', PROV + 'used', EX + 'channel'),
+            ).toBe(true)
+            expect(
+                has(
+                    quads,
+                    EX + 'bucketize',
+                    PROV + 'generated',
+                    EX + 'buckets',
+                ),
+            ).toBe(true)
+        })
+
+        test('follows the members of a list', () => {
+            expect(
+                has(quads, EX + 'merge', PROV + 'used', EX + 'channel'),
+            ).toBe(true)
+            expect(
+                has(quads, EX + 'merge', PROV + 'used', EX + 'buckets'),
+            ).toBe(true)
+            expect(
+                has(quads, EX + 'merge', PROV + 'generated', EX + 'merged'),
+            ).toBe(true)
+        })
+
+        test('does not follow named nodes, such as other processors', () => {
+            const used = quads.filter(
+                (q) =>
+                    q.subject.value === EX + 'wrapper' &&
+                    (q.predicate.value === PROV + 'used' ||
+                        q.predicate.value === PROV + 'generated'),
+            )
+            expect(used).toEqual([])
+        })
+
+        test('leaves the helper terms of the rules out of the result', () => {
+            expect(
+                quads.some((q) =>
+                    q.predicate.value.startsWith(
+                        'https://w3id.org/rdf-connect/provenance-rules#',
+                    ),
+                ),
+            ).toBe(false)
+        })
+    })
+
     describe('result composition', () => {
         test('retains the original pipeline description', () => {
             const pipeline = new Parser().parse(PIPELINE)
@@ -230,5 +322,18 @@ describe('inferProvenance', () => {
                 ),
             ).toBe(false)
         })
+    })
+})
+
+describe('serializeQuads', () => {
+    // Regression: the pipeline sent to the runners was serialized from the
+    // provenance quads themselves, which emptied them, so the provenance file
+    // only held the timing quads.
+    test('leaves the quads it serializes unchanged', async () => {
+        const quads = new Parser().parse(PIPELINE)
+        const count = quads.length
+        const first = await serializeQuads(quads, 'pipeline.ttl')
+        expect(quads.length).toBe(count)
+        expect(await serializeQuads(quads, 'pipeline.ttl')).toBe(first)
     })
 })
