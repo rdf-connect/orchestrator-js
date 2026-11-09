@@ -7,7 +7,7 @@
 
 import { NamedNode, Quad, Quad_Object, Term } from '@rdfjs/types'
 import { $INLINE_FILE } from '@ajuvercr/ts-transformer-inline-file'
-import { BasicLens, Cont, extractShapes, match, subject } from 'rdf-lens'
+import { BasicLens, Cont, extractShapes } from 'rdf-lens'
 import { Parser } from 'n3'
 import {
     createUriAndTermNamespace,
@@ -38,6 +38,8 @@ export const RDFL = createUriAndTermNamespace(
     terms: Namespace<string[], NamedNode, string>
 }
 
+const SHACL_NODE = SHACL.terms.custom('node')
+
 // Load and parse the JSON-LD processor definition
 const processor = $INLINE_FILE('./jsonld.ttl')
 
@@ -62,11 +64,13 @@ const processorShape = <BasicLens<Cont<Term>, PlainDefinition>>(
  * @property {Term} path.id - Term identifying the path
  * @property {Quad[]} path.quads - RDF quads defining the path
  * @property {Term} [clazz] - Optional class constraint for the property
+ * @property {Term} [node] - Optional node shape the property values must conform to (sh:node)
  * @property {Term} [datatype] - Optional datatype for the property values
  * @property {Term} [nodeKind] - Optional node kind the property values must have
  * @property {Term} [codeType] - Optional type the processor receives (sh:codeType)
  * @property {number} [minCount] - Optional minimum count constraint
  * @property {number} [maxCount] - Optional maximum count constraint
+ * @property {Term} [defaultValue] - Optional value used when the data has none (sh:defaultValue)
  */
 export type PropertyDTO = {
     name: string
@@ -75,21 +79,25 @@ export type PropertyDTO = {
         quads: Quad[]
     }
     clazz?: Term
+    node?: Term
     datatype?: Term
     nodeKind?: Term
     codeType?: Term
     minCount?: number
     maxCount?: number
+    defaultValue?: Term
 }
 
 /**
  * Data Transfer Object for processor definitions.
  * @typedef {Object} ProcessorDTO
+ * @property {Term} id - The node shape itself
  * @property {Term[]} target - Target types for the processor
  * @property {Term[]} targetSubjects - Subject terms that match the target types
  * @property {PropertyDTO[]} properties - Properties defined for the processor
  */
 export type ProcessorDTO = {
+    id: Term
     target: Term[]
     targetSubjects: Term[]
     properties: PropertyDTO[]
@@ -131,10 +139,10 @@ export type Document = {
 
 /**
  * Represents a value in a JSON-LD document.
- * Can be a nested document, string, or number.
- * @typedef {Document | string | number} DocumentValue
+ * Can be a nested document, string, number, or boolean.
+ * @typedef {Document | string | number | boolean} DocumentValue
  */
-export type DocumentValue = Document | string | number
+export type DocumentValue = Document | string | number | boolean
 
 /**
  * Abstract base class for JSON-LD definitions.
@@ -263,7 +271,16 @@ function isNestedProperty(property: PropertyDTO): boolean {
     return property.path.id.equals(RDF.terms.nil)
 }
 
+/**
+ * The key under which a node shape referred to with sh:node is found in the
+ * definitions: its IRI, or its blank node label prefixed with `_:`.
+ */
+export function nodeShapeKey(shape: Term): string {
+    return shape.termType === 'BlankNode' ? '_:' + shape.value : shape.value
+}
+
 export class PlainDefinition extends Definition implements ProcessorDTO {
+    id: Term
     target: Term[]
     targetSubjects: Term[]
     properties: PropertyDTO[]
@@ -311,7 +328,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         context['@context'] = innerCtx
     }
 
-    private handleClazzProperty(
+    private handleNestedProperty(
         quads: Quad[],
         others: { [id: string]: Definition },
         values: Term[],
@@ -319,25 +336,32 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         editing: Document,
         id: Term,
     ) {
+        // sh:node goes before sh:class, like in rdf-lens
+        const key = property.node
+            ? nodeShapeKey(property.node)
+            : property.clazz!.value
+        const definition = others[key]
+        if (values.length > 0 && !definition) {
+            console.error('Failed at property', {
+                [property.node ? 'node' : 'clazz']: key,
+                found: Object.keys(others),
+            })
+            throw property.node
+                ? `No node shape ${key} found for property ${property.name} (sh:node)`
+                : `No shape found for class ${key} of property ${property.name} (sh:class)`
+        }
+
         const vs = []
         editing[property.name] = []
         for (const v of values) {
-            try {
-                vs.push(
-                    others[property.clazz!.value].addToDocument(
-                        v,
-                        quads,
-                        others,
-                        isNestedProperty(property),
-                    ),
-                )
-            } catch (ex) {
-                console.error('Failed at property', {
-                    clazz: property.clazz!.value,
-                    found: Object.keys(others),
-                })
-                throw ex
-            }
+            vs.push(
+                definition.addToDocument(
+                    v,
+                    quads,
+                    others,
+                    isNestedProperty(property),
+                ),
+            )
         }
 
         editing[property.name] = handleAccordingToProperty(vs, property, id)
@@ -352,20 +376,27 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         const out = this.createDocumentBase(id, isNest)
         if (this.target.length == 1) {
             out['@type'] = this.target[0].value
-        } else {
+        } else if (this.target.length > 1) {
             out['@type'] = this.target.map((x) => x.value)
         }
         this.addToContext(out)
 
         for (const property of this.properties) {
             // TODO: handle collections here as well
-            const values = isNestedProperty(property)
+            let values = isNestedProperty(property)
                 ? [id]
                 : findMatchingObjects(quads, id, property)
 
-            // Like rdf-lens, sh:codeType goes before sh:class (SHACL 1.2)
-            if (property.clazz && !property.codeType) {
-                this.handleClazzProperty(
+            // Like rdf-lens, the default is used when the data has no value,
+            // and counts for sh:minCount
+            if (values.length === 0 && property.defaultValue) {
+                values = findDefaultValues(quads, property.defaultValue)
+            }
+
+            // Like rdf-lens, sh:codeType goes before sh:node and sh:class
+            // (SHACL 1.2)
+            if ((property.node || property.clazz) && !property.codeType) {
+                this.handleNestedProperty(
                     quads,
                     others,
                     values,
@@ -392,7 +423,7 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 continue
             }
 
-            throw `No sh:class, sh:datatype, sh:nodeKind nor sh:codeType for property ${property.name}`
+            throw `No sh:node, sh:class, sh:datatype, sh:nodeKind nor sh:codeType for property ${property.name}`
         }
 
         return out
@@ -447,8 +478,32 @@ function findMatchingObjects(
         })
 }
 
+/**
+ * The values of a sh:defaultValue: the items of an RDF list, or the term
+ * itself, like rdf-lens.
+ */
+function findDefaultValues(quads: Quad[], defaultValue: Term): Term[] {
+    try {
+        return findMatchingObjectsFromCollection(quads, defaultValue)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (ex: unknown) {
+        return [defaultValue]
+    }
+}
+
+const NUMBER_TYPES = ['float', 'double', 'decimal'].map((x) =>
+    XSD.terms.custom(x),
+)
+
+/**
+ * Converts a value to the JSON value a runner expects for its datatype, like
+ * rdf-lens: numbers and booleans become JSON numbers and booleans.
+ */
 function handleAccordingToDatatype(inp: string, datatype?: Term) {
-    if (datatype?.equals(XSD.terms.integer)) return parseInt(inp)
+    if (!datatype) return inp
+    if (datatype.equals(XSD.terms.integer)) return parseInt(inp)
+    if (NUMBER_TYPES.some((x) => x.equals(datatype))) return +inp
+    if (datatype.equals(XSD.terms.custom('boolean'))) return inp === 'true'
     return inp
 }
 function handleAccordingToProperty<T>(
@@ -484,28 +539,56 @@ export type Definitions = { [id: string]: Definition }
  * - Path: Handles RDF path expressions
  * - TypedExtract: Extracts typed literals from RDF data
  *
+ * Node shapes are found by their target classes and target subjects. Node
+ * shapes referred to with sh:node, which need no sh:targetClass nor
+ * rdf:type and may be inline blank nodes, are also found by their own key
+ * (see {@link nodeShapeKey}).
+ *
  * @param {Quad[]} quads - RDF quads to parse
  * @returns {Definitions} Processed definitions including both parsed and built-in definitions
  * @throws {Error} If no processor definitions are found in the input quads
  */
 export function parse_processors(quads: Quad[]): Definitions {
-    const dtos = match(undefined, RDF.terms.type, SHACL.terms.NodeShape)
-        .thenAll(subject)
-        .thenSome(processorShape)
-        .map((xs) => {
-            const out: { [id: string]: Definition } = {}
-            for (const processor of xs) {
-                for (const v of processor.target) {
-                    out[v.value] = processor
-                }
+    const typed = quads
+        .filter(
+            (q) =>
+                q.predicate.equals(RDF.terms.type) &&
+                q.object.equals(SHACL.terms.NodeShape),
+        )
+        .map((q) => q.subject)
+    // A node shape without any triples, a typo for example, is not defined
+    const referred = quads
+        .filter((q) => q.predicate.equals(SHACL_NODE))
+        .map((q) => q.object)
+        .filter((shape) => quads.some((q) => q.subject.equals(shape)))
 
-                for (const v of processor.targetSubjects) {
-                    out[v.value] = processor
-                }
-            }
-            return out
-        })
-        .execute(quads)
+    const shapes: Term[] = []
+    for (const shape of [...typed, ...referred]) {
+        if (!shapes.some((x) => x.equals(shape))) shapes.push(shape)
+    }
+
+    const dtos: Definitions = {}
+    for (const shape of shapes) {
+        let processor: PlainDefinition
+        try {
+            processor = processorShape.execute({ id: shape, quads })
+        } catch {
+            // Like before, a shape that cannot be read is skipped
+            continue
+        }
+
+        for (const v of processor.target) {
+            dtos[v.value] = processor
+        }
+
+        for (const v of processor.targetSubjects) {
+            dtos[v.value] = processor
+        }
+
+        if (referred.some((x) => x.equals(shape))) {
+            dtos[nodeShapeKey(shape)] = processor
+        }
+    }
 
     dtos[RDFL.CBD] = new CBDDefinition(RDFL.CBD)
     dtos[RDFL.Path] = new CBDDefinition(RDFL.Path)
