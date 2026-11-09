@@ -290,6 +290,11 @@ ex:collection a ex:Collection;
     )
     const processors_mixed = parse_processors(config_quads_mixed)
     const data_quads = parse_quads(data)
+    // The blank node label depends on how many blank nodes N3 made before
+    const nestedId =
+        '_:' +
+        data_quads.find((q) => q.predicate.value === EX + 'nested')!.object
+            .value
 
     function getDocumentName(iri: string, shape: string): Document {
         return processors_name[shape].addToDocument(
@@ -343,7 +348,7 @@ ex:collection a ex:Collection;
         string: '42',
         iri: 'http://example.org/ns#fourtyTwo',
         nested: {
-            '@id': '_:n3-92',
+            '@id': nestedId,
             '@type': 'http://example.org/ns#SimpleShape',
             '@context': simpleShapeContext,
             string: '43',
@@ -424,7 +429,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-92',
+                '@id': nestedId,
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -559,7 +564,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-92',
+                '@id': nestedId,
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {
@@ -699,7 +704,7 @@ _:n3-44 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/ns
                 },
             },
             cbd: {
-                '@id': '_:n3-92',
+                '@id': nestedId,
                 '@type': 'https://w3id.org/rdf-lens/ontology#Path',
                 'http://example.org/ns#number': [
                     {

@@ -45,6 +45,16 @@
     sh:maxCount 1;
     sh:nodeKind sh:IRI;
   ], [
+    sh:name "node";
+    sh:path sh:node;
+    sh:maxCount 1;
+    sh:nodeKind sh:BlankNodeOrIRI;
+  ], [
+    sh:name "defaultValue";
+    sh:path sh:defaultValue;
+    sh:maxCount 1;
+    sh:datatype xsd:any;
+  ], [
     sh:name "datatype";
     sh:path sh:datatype;
     sh:maxCount 1;
