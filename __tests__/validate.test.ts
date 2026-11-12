@@ -110,7 +110,7 @@ ex:proc a ex:Loose; rdfc:file <./somewhere.js>.
         expect(results.length).toBe(1)
         expect(results[0].severity).toBe('Warning')
         // Warnings never abort startup, even under enforcement.
-        await expect(assertValid(quads, true)).resolves.toBeUndefined()
+        await expect(assertValid(quads)).resolves.toBeUndefined()
     })
 
     test('does not validate the orchestrator its own extraction shapes', async () => {
@@ -120,15 +120,40 @@ ex:proc a ex:Loose; rdfc:file <./somewhere.js>.
     })
 })
 
+describe('processors without a contract', () => {
+    test('are reported together with the other results', async () => {
+        const quads = pipeline(`
+            <> rdfc:consistsOf [ rdfc:processor ex:fetch, ex:unknown ].
+            ex:fetch a ex:Fetch; rdfc:writer ex:channel.
+            ex:unknown a ex:Unknown.
+        `)
+        const results = await validatePipeline(quads)
+        expect(
+            results.find((r) => r.focusNode === 'http://example.org/#unknown'),
+        ).toMatchObject({
+            message: expect.stringMatching(/No contract was imported for/),
+            severity: 'Violation',
+        })
+        // The missing url of ex:fetch is still reported next to it
+        expect(results.some((r) => r.path?.endsWith('url'))).toBe(true)
+    })
+
+    test('are not reported when a contract targets their type', async () => {
+        const quads = pipeline(`
+            <> rdfc:consistsOf [ rdfc:processor ex:fetch ].
+            ex:fetch a ex:Fetch;
+              rdfc:url "https://example.org/data.json";
+              rdfc:writer ex:channel.
+        `)
+        expect(await validatePipeline(quads)).toEqual([])
+    })
+})
+
 describe('assertValid', () => {
     const broken = () =>
         pipeline(`ex:fetch a ex:Fetch; rdfc:writer ex:channel.`)
 
     test('throws by default', async () => {
         await expect(assertValid(broken())).rejects.toThrow(/does not conform/)
-    })
-
-    test('reports without throwing when enforcement is disabled', async () => {
-        await expect(assertValid(broken(), false)).resolves.toBeUndefined()
     })
 })
