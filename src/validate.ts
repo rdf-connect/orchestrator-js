@@ -4,8 +4,8 @@
  * imports, before any runner is started.
  */
 
-import { Quad } from '@rdfjs/types'
-import Validator, { type ShaclResult } from 'shacl-engine/Validator.js'
+import { Quad, Term } from '@rdfjs/types'
+import type { ShaclResult } from 'shacl-engine/Validator.js'
 import { DataFactory } from 'rdf-data-factory'
 import { Store } from 'n3'
 import { getLoggerFor, collapseLast } from './logUtil.js'
@@ -55,22 +55,74 @@ function contractQuads(quads: Quad[]): Quad[] {
 }
 
 const SHACL = 'http://www.w3.org/ns/shacl#'
+const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+const RDFC_PROCESSOR = 'https://w3id.org/rdf-connect#processor'
 
 /**
- * Validates `quads` against the SHACL contracts contained in it.
+ * Processors whose type no imported contract targets.
+ *
+ * A SHACL engine checks a node only against the shapes that target it, so a
+ * processor without a contract conforms vacuously. Extraction looks up a
+ * processor's contract by its `sh:targetClass`, so the same lookup is done here
+ * and every processor it would fail for is reported with the other results.
+ */
+function uncontracted(quads: Quad[], shapes: Quad[]): Violation[] {
+    const targeted = new Set(
+        shapes
+            .filter((q) => q.predicate.value === SHACL + 'targetClass')
+            .map((q) => q.object.value),
+    )
+    const processors: Term[] = []
+    for (const q of quads) {
+        if (
+            q.predicate.value === RDFC_PROCESSOR &&
+            !processors.some((p) => p.equals(q.object))
+        ) {
+            processors.push(q.object)
+        }
+    }
+
+    const results: Violation[] = []
+    for (const processor of processors) {
+        const types = quads
+            .filter(
+                (q) =>
+                    q.subject.equals(processor) &&
+                    q.predicate.value === RDF_TYPE,
+            )
+            .map((q) => q.object.value)
+        if (types.some((t) => targeted.has(t))) continue
+        results.push({
+            focusNode: processor.value,
+            message:
+                types.length === 0
+                    ? 'Processor has no type, so no contract applies to it'
+                    : `No contract was imported for ${types.map(collapseLast).join(', ')}. Try importing the processor or check for typos.`,
+            severity: 'Violation',
+        })
+    }
+    return results
+}
+
+/**
+ * Validates `quads` against the SHACL contracts contained in it, and reports
+ * every processor whose type no imported contract describes.
  *
  * Call this after environment variables have been substituted and before the
  * pipeline is extracted, so that what is checked is what will be executed.
+ * The SHACL engine is loaded on the first call, so a pipeline started without
+ * validation does not load it.
  *
  * @param {Quad[]} quads - The fully resolved pipeline description.
  * @returns {Promise<Violation[]>} Every violation found, empty when the pipeline conforms.
  */
 export async function validatePipeline(quads: Quad[]): Promise<Violation[]> {
+    const { default: Validator } = await import('shacl-engine/Validator.js')
     const shapes = contractQuads(quads)
     const validator = new Validator(store(shapes), { factory: df })
     const report = await validator.validate({ dataset: store(quads) })
 
-    return report.results.map((r: ShaclResult) => {
+    const results = report.results.map((r: ShaclResult) => {
         const severity = r.severity?.value ?? SHACL + 'Violation'
 
         return {
@@ -82,6 +134,7 @@ export async function validatePipeline(quads: Quad[]): Promise<Violation[]> {
             severity: severity.split(/[#/]/).pop() ?? 'Violation',
         }
     })
+    return [...uncontracted(quads, shapes), ...results]
 }
 
 /**
@@ -91,20 +144,14 @@ export async function validatePipeline(quads: Quad[]): Promise<Violation[]> {
  * `sh:severity`, such as `sh:Warning` or `sh:Info`, are reported and never fatal.
  *
  * @param {Quad[]} quads - The fully resolved pipeline description.
- * @param {boolean} enforce - Whether violations abort the pipeline; on by default.
- * @throws {Error} When at least one violation was found and `enforce` holds.
+ * @throws {Error} When at least one violation was found.
  */
-export async function assertValid(
-    quads: Quad[],
-    enforce: boolean = true,
-): Promise<void> {
+export async function assertValid(quads: Quad[]): Promise<void> {
     const results = await validatePipeline(quads)
     if (results.length === 0) {
         logger.debug('Pipeline conforms to the imported contracts')
         return
     }
-
-    const violations = results.filter((v) => v.severity === 'Violation')
 
     for (const v of results) {
         const where = [
@@ -114,22 +161,17 @@ export async function assertValid(
             .filter(Boolean)
             .join(' ')
         const line = `${v.message}${where ? ` (${where})` : ''}`
-        if (v.severity === 'Violation' && enforce) {
+        if (v.severity === 'Violation') {
             logger.error(line)
         } else {
             logger.warn(`${v.severity}: ${line}`)
         }
     }
 
-    if (enforce && violations.length > 0) {
+    const violations = results.filter((v) => v.severity === 'Violation')
+    if (violations.length > 0) {
         throw new Error(
             `Pipeline does not conform to the imported contracts: ${violations.length} violation(s)`,
-        )
-    }
-
-    if (violations.length > 0) {
-        logger.warn(
-            `${violations.length} violation(s) found; validation is not being enforced`,
         )
     }
 }
