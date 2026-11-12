@@ -8,7 +8,7 @@ _:id sh:path ( );
   sh:name "id";
   sh:minCount 1;
   sh:maxCount 1;
-  sh:datatype xsd:any.
+  sh:nodeKind sh:BlankNodeOrIRI.
 
 [ ] a sh:NodeShape;
   sh:targetClass <Pipeline>;

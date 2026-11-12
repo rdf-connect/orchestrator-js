@@ -33,11 +33,12 @@ function store(quads: Quad[]): Store {
  * only those.
  *
  * The orchestrator's own `model.ttl` is deliberately excluded. Its shapes are
- * extraction directives rather than constraints: they use `sh:path ( )` to mean
- * "the focus node itself" and datatypes such as `xsd:iri` and `xsd:any` that do
- * not exist, so a conforming SHACL processor would report violations for every
- * pipeline ever written. Those shapes are interpreted by the extraction step
- * (Section: SHACL as configuration schema); they are not claims about the data.
+ * extraction directives rather than constraints. They use `sh:path ( )` to mean
+ * "the focus node itself", which is not a well-formed SHACL path, since a
+ * sequence path needs at least two members. They also require values that the
+ * orchestrator supplies during extraction rather than the pipeline, such as a
+ * runner's `rdfc:Orchestrator`, so a SHACL processor would report every
+ * runner in every pipeline as a violation.
  */
 function contractQuads(quads: Quad[]): Quad[] {
     const internal = new Set(
