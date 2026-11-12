@@ -25,6 +25,7 @@ export * from './orchestrator.js'
 export * from './instantiators/index.js'
 export * from './server.js'
 export * from './util.js'
+export * from './validate.js'
 
 /**
  * Initializes and starts the orchestrator with the specified pipeline configuration.
@@ -33,6 +34,7 @@ export * from './util.js'
  * @param {string} location - Filesystem path to the pipeline configuration file
  * @param {number} port - Port number on which to initialize the gRPC server (default: 50051)
  * @param {string} provenanceLocation - Filesystem path to store the provenance metadata to
+ * @param {boolean} strictValidation - Whether SHACL violations abort startup; on by default
  * @returns {Promise<void>}
  *
  * @throws {LensError} If there's an error processing the pipeline configuration
@@ -50,6 +52,7 @@ export async function start(
     location: string,
     port = 50051,
     provenanceLocation?: string,
+    strictValidation = true,
 ): Promise<void> {
     const logger = getLoggerFor(['start'])
     // Shape deprecations from rdf-lens, logged with the rest of the pipeline
@@ -57,6 +60,7 @@ export async function start(
     setWarningHandler((message) => lensLogger.warn(message))
     const grpcServer = new grpc.Server()
     const orchestrator = new Orchestrator()
+    orchestrator.strictValidation = strictValidation
     const server = new Server(orchestrator)
 
     const injector = grpcServer.createConnectionInjector(
