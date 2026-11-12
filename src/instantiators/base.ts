@@ -268,13 +268,20 @@ export abstract class Instantiator {
         )
         const jsonldDoc = jsonld_to_string(document)
 
-        await this.sendMessage.write({
-            proc: {
-                uri: proc.id.value,
-                config: jsonldDoc,
-                arguments: args,
-            },
-        })
+        try {
+            await this.sendMessage.write({
+                proc: {
+                    uri: proc.id.value,
+                    config: jsonldDoc,
+                    arguments: args,
+                },
+            })
+        } catch (ex) {
+            // Nothing awaits processorIsInit anymore, so stop waiting for the
+            // processor: settling it later would be an unhandled rejection
+            delete this.processorsStarting[proc.id.value]
+            throw ex
+        }
 
         await processorIsInit
     }
