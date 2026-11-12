@@ -10,7 +10,7 @@
     sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
-    sh:datatype xsd:any;
+    sh:nodeKind sh:BlankNodeOrIRI;
   ], [
     sh:name "quads";
     sh:path ( );
@@ -53,7 +53,7 @@
     sh:name "defaultValue";
     sh:path sh:defaultValue;
     sh:maxCount 1;
-    sh:datatype xsd:any;
+    sh:codeType rdfl:Term;
   ], [
     sh:name "datatype";
     sh:path sh:datatype;
