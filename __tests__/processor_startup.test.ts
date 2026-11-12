@@ -9,6 +9,7 @@ function fakeRunner() {
     const queue: (FromRunner | null)[] = []
     let wake: (() => void) | undefined
     const received: ToRunner[] = []
+    const state = { writeError: undefined as Error | undefined }
 
     async function* stream(): AsyncGenerator<FromRunner> {
         while (true) {
@@ -29,9 +30,12 @@ function fakeRunner() {
 
     return {
         received,
+        /** Makes every following write to the runner fail with this error */
+        failWrites: (error: Error) => (state.writeError = error),
         channels: {
             sendMessage: {
                 write: async (msg: ToRunner) => {
+                    if (state.writeError) throw state.writeError
                     received.push(msg)
                 },
             },
@@ -131,6 +135,22 @@ describe('Processor startup failures', () => {
         expect(await startFailures(started)).toEqual([
             `Processor ${processors[0]} did not start: runner http://example.org/runner1 ended before it was added`,
         ])
+    })
+
+    test('a processor that cannot be sent to its runner fails the pipeline', async () => {
+        const { fixture, runners, processors } = await connectedPipeline()
+
+        runners[0].failWrites(new Error('write after end'))
+        const started = fixture.orchestrator.startProcessors()
+        await processorSent(runners[1])
+        runners[1].send({ initialized: { uri: processors[1] } })
+
+        expect(await startFailures(started)).toEqual(['write after end'])
+
+        // The runner's stream ending afterwards must not reject a wait that
+        // nothing awaits anymore (vitest fails on unhandled rejections)
+        runners[0].end()
+        await new Promise((res) => setTimeout(res, 10))
     })
 
     test('processors that start do not fail the pipeline', async () => {
