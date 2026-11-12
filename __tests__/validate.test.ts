@@ -114,8 +114,8 @@ ex:proc a ex:Loose; rdfc:file <./somewhere.js>.
     })
 
     test('does not validate the orchestrator its own extraction shapes', async () => {
-        // model.ttl uses sh:path ( ) and datatypes such as xsd:iri that no
-        // conforming SHACL processor accepts. Passing it alone must stay quiet.
+        // model.ttl uses sh:path ( ) and requires values the orchestrator
+        // supplies during extraction. Passing it alone must stay quiet.
         expect(await validatePipeline([...modelQuads])).toEqual([])
     })
 })
