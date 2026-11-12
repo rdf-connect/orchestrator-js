@@ -93,10 +93,10 @@ function parseArgs(args) {
     }
 
     const noValidationIdx = args.findIndex((v) => v === '--no-validation')
-    let strictValidation = true
+    let validation = true
     if (noValidationIdx !== -1) {
         args.splice(noValidationIdx, 1)
-        strictValidation = false
+        validation = false
     }
 
     let provenanceLocation
@@ -120,7 +120,7 @@ function parseArgs(args) {
         portExplicit,
         location,
         provenanceLocation,
-        strictValidation,
+        validation,
     }
 }
 
@@ -136,12 +136,11 @@ try {
     process.exit(1)
 }
 
-const { port, portExplicit, location, provenanceLocation, strictValidation } =
-    parsed
+const { port, portExplicit, location, provenanceLocation, validation } = parsed
 
 try {
     const resolvedPort = await resolvePort(port, portExplicit)
-    await start(location, resolvedPort, provenanceLocation, strictValidation)
+    await start(location, resolvedPort, provenanceLocation, validation)
 } catch (ex) {
     if (ex instanceof Error) {
         console.error(ex.stack)

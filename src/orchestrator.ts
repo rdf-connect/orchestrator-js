@@ -93,8 +93,8 @@ export class Orchestrator implements Callbacks {
     /** Processor definitions parsed from the pipeline */
     definitions: Definitions = {}
 
-    /** Whether SHACL violations abort startup. Disabled with --no-validation. */
-    strictValidation = true
+    /** Whether the pipeline is validated before startup. Disabled with --no-validation. */
+    validation = true
 
     private readonly router = new MessageRouter()
     private readonly runners = new RunnerRegistry()
@@ -138,7 +138,9 @@ export class Orchestrator implements Callbacks {
 
         // Validate after substituting environment variables and before extracting
         // anything, so that what is checked is what will actually be executed.
-        await assertValid(this.quads, this.strictValidation)
+        if (this.validation) {
+            await assertValid(this.quads)
+        }
 
         this.definitions = definitions ?? parse_processors(this.quads)
 
