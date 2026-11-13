@@ -50,6 +50,11 @@
     sh:maxCount 1;
     sh:nodeKind sh:BlankNodeOrIRI;
   ], [
+    sh:name "memberShape";
+    sh:path sh:memberShape;
+    sh:maxCount 1;
+    sh:nodeKind sh:BlankNodeOrIRI;
+  ], [
     sh:name "defaultValue";
     sh:path sh:defaultValue;
     sh:maxCount 1;
