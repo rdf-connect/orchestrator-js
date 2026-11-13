@@ -39,6 +39,7 @@ export const RDFL = createUriAndTermNamespace(
 }
 
 const SHACL_NODE = SHACL.terms.custom('node')
+const SHACL_MEMBER_SHAPE = SHACL.terms.custom('memberShape')
 
 // Load and parse the JSON-LD processor definition
 const processor = $INLINE_FILE('./jsonld.ttl')
@@ -65,12 +66,14 @@ const processorShape = <BasicLens<Cont<Term>, PlainDefinition>>(
  * @property {Quad[]} path.quads - RDF quads defining the path
  * @property {Term} [clazz] - Optional class constraint for the property
  * @property {Term} [node] - Optional node shape the property values must conform to (sh:node)
+ * @property {Term} [memberShape] - Optional node shape the members of each list value must conform to (sh:memberShape)
  * @property {Term} [datatype] - Optional datatype for the property values
  * @property {Term} [nodeKind] - Optional node kind the property values must have
  * @property {Term} [codeType] - Optional type the processor receives (sh:codeType)
  * @property {number} [minCount] - Optional minimum count constraint
  * @property {number} [maxCount] - Optional maximum count constraint
  * @property {Term} [defaultValue] - Optional value used when the data has none (sh:defaultValue)
+ * @property {MemberDTO} [member] - The constraints of a member shape without properties of its own
  */
 export type PropertyDTO = {
     name: string
@@ -80,13 +83,25 @@ export type PropertyDTO = {
     }
     clazz?: Term
     node?: Term
+    memberShape?: Term
     datatype?: Term
     nodeKind?: Term
     codeType?: Term
     minCount?: number
     maxCount?: number
     defaultValue?: Term
+    member?: MemberDTO
 }
+
+/**
+ * The constraints of a member shape without properties of its own, such as
+ * [ sh:datatype xsd:integer ]: they constrain the members themselves, which
+ * are read as the values of a property with those constraints would be.
+ */
+export type MemberDTO = Pick<
+    PropertyDTO,
+    'clazz' | 'node' | 'datatype' | 'nodeKind' | 'codeType'
+>
 
 /**
  * Data Transfer Object for processor definitions.
@@ -279,6 +294,58 @@ export function nodeShapeKey(shape: Term): string {
     return shape.termType === 'BlankNode' ? '_:' + shape.value : shape.value
 }
 
+/**
+ * The rdf-lens classes the orchestrator provides definitions for itself. They
+ * say what a processor receives rather than what the data is, so contracts
+ * give them as sh:codeType, which validation ignores, as well as sh:class.
+ */
+const BUILT_IN_DEFINITIONS = [
+    RDFL.CBD,
+    RDFL.Path,
+    RDFL.PathLens,
+    RDFL.Context,
+    RDFL.TypedExtract,
+]
+
+function builtInCodeType(property: PropertyDTO): string | undefined {
+    const codeType = property.codeType?.value
+    return codeType && BUILT_IN_DEFINITIONS.includes(codeType)
+        ? codeType
+        : undefined
+}
+
+/**
+ * The definition key of the nested object a property holds: the built-in
+ * definition its sh:codeType names, its sh:node, or its sh:class, in that
+ * order, like rdf-lens. Undefined when its values are not nested objects.
+ */
+function nestedKey(property: PropertyDTO): string | undefined {
+    const builtIn = builtInCodeType(property)
+    if (builtIn) return builtIn
+    if (property.codeType) return undefined
+    if (property.node) return nodeShapeKey(property.node)
+    return property.clazz?.value
+}
+
+/**
+ * The JSON-LD type of the values of a property in the context: '@id' for
+ * IRIs, the code type or datatype for literals, none for nested objects.
+ */
+function contextType(property: MemberDTO): string | undefined {
+    if (builtInCodeType(<PropertyDTO>property)) return undefined
+    const type = property.codeType ?? property.datatype
+    if (type) {
+        return type.value === 'http://www.w3.org/2001/XMLSchema#iri' ||
+            type.value === 'http://www.w3.org/2001/XMLSchema#anyURI'
+            ? '@id'
+            : type.value
+    }
+    if (property.nodeKind?.value === 'http://www.w3.org/ns/shacl#IRI') {
+        return '@id'
+    }
+    return undefined
+}
+
 export class PlainDefinition extends Definition implements ProcessorDTO {
     id: Term
     target: Term[]
@@ -292,7 +359,10 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
 
     addToContext(context: Document) {
         const innerCtx: {
-            [id: string]: string | number | { '@id': string; '@type'?: string }
+            [id: string]:
+                | string
+                | number
+                | { '@id': string; '@type'?: string; '@container'?: string }
         } = {}
         let needs11 = false
 
@@ -301,22 +371,23 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 needs11 = true
                 innerCtx[property.name] = '@nest'
             } else {
-                const obj: { '@id': string; '@type'?: string } = {
+                const obj: {
+                    '@id': string
+                    '@type'?: string
+                    '@container'?: string
+                } = {
                     '@id': property.path.id.value,
                 }
-                const type = property.codeType ?? property.datatype
-                if (type) {
-                    obj['@type'] =
-                        type.value === 'http://www.w3.org/2001/XMLSchema#iri' ||
-                        type.value === 'http://www.w3.org/2001/XMLSchema#anyURI'
-                            ? '@id'
-                            : type.value
-                } else if (
-                    property.nodeKind?.value ===
-                    'http://www.w3.org/ns/shacl#IRI'
-                ) {
-                    obj['@type'] = '@id'
+                // Each value of a sh:memberShape is an RDF list, whose
+                // members have the type of the member shape, if any
+                const isList = property.memberShape && !property.codeType
+                if (isList && property.maxCount === 1) {
+                    obj['@container'] = '@list'
                 }
+                const type = isList
+                    ? property.member && contextType(property.member)
+                    : contextType(property)
+                if (type) obj['@type'] = type
                 innerCtx[property.name] = obj
             }
         }
@@ -328,43 +399,122 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         context['@context'] = innerCtx
     }
 
-    private handleNestedProperty(
+    /**
+     * What the processor receives for the values of a property: nested
+     * objects, or values converted with the code type or datatype.
+     */
+    private convertValues(
         quads: Quad[],
         others: { [id: string]: Definition },
         values: Term[],
         property: PropertyDTO,
-        editing: Document,
-        id: Term,
-    ) {
-        // sh:node goes before sh:class, like in rdf-lens
-        const key = property.node
-            ? nodeShapeKey(property.node)
-            : property.clazz!.value
-        const definition = others[key]
-        if (values.length > 0 && !definition) {
-            console.error('Failed at property', {
-                [property.node ? 'node' : 'clazz']: key,
-                found: Object.keys(others),
-            })
-            throw property.node
-                ? `No node shape ${key} found for property ${property.name} (sh:node)`
-                : `No shape found for class ${key} of property ${property.name} (sh:class)`
+    ): DocumentValue[] {
+        // Like rdf-lens, sh:codeType goes before sh:node and sh:class
+        // (SHACL 1.2), unless it names a built-in definition
+        if (nestedKey(property)) {
+            return this.nestedValues(quads, others, values, property)
         }
 
-        const vs = []
-        editing[property.name] = []
-        for (const v of values) {
-            vs.push(
-                definition.addToDocument(
-                    v,
-                    quads,
-                    others,
-                    isNestedProperty(property),
+        if (property.datatype || property.codeType || property.nodeKind) {
+            return values.map((v) =>
+                handleAccordingToDatatype(
+                    v.value,
+                    property.codeType ?? property.datatype,
                 ),
             )
         }
 
-        editing[property.name] = handleAccordingToProperty(vs, property, id)
+        throw `No sh:memberShape, sh:node, sh:class, sh:datatype, sh:nodeKind nor sh:codeType for property ${property.name}`
+    }
+
+    private nestedValues(
+        quads: Quad[],
+        others: { [id: string]: Definition },
+        values: Term[],
+        property: PropertyDTO,
+    ): Document[] {
+        const key = nestedKey(property)!
+        const definition = others[key]
+        if (values.length > 0 && !definition) {
+            const by = builtInCodeType(property)
+                ? 'codeType'
+                : property.node
+                  ? 'node'
+                  : 'clazz'
+            console.error('Failed at property', {
+                [by]: key,
+                found: Object.keys(others),
+            })
+            throw by === 'codeType'
+                ? `No definition found for code type ${key} of property ${property.name} (sh:codeType)`
+                : by === 'node'
+                  ? `No node shape ${key} found for property ${property.name} (sh:node)`
+                  : `No shape found for class ${key} of property ${property.name} (sh:class)`
+        }
+
+        return values.map((v) =>
+            definition.addToDocument(
+                v,
+                quads,
+                others,
+                isNestedProperty(property),
+            ),
+        )
+    }
+
+    /**
+     * A property with sh:memberShape: each value is an RDF list, so the value
+     * becomes an array of the members, in order, like rdf-lens. Every member
+     * is built with that node shape, or, when the member shape has no
+     * properties of its own, read with its constraints.
+     */
+    private handleMemberShapeProperty(
+        quads: Quad[],
+        others: { [id: string]: Definition },
+        property: PropertyDTO,
+        editing: Document,
+        id: Term,
+    ) {
+        const key = nodeShapeKey(property.memberShape!)
+        const definition = others[key]
+
+        let lists: Term[] = quads
+            .filter(
+                (q) =>
+                    q.subject.equals(id) &&
+                    q.predicate.equals(property.path.id),
+            )
+            .map((q) => q.object)
+        if (lists.length === 0 && property.defaultValue) {
+            lists = [property.defaultValue]
+        }
+        if (lists.length > 0 && !definition && !property.member) {
+            throw `No node shape ${key} found for property ${property.name} (sh:memberShape)`
+        }
+
+        const values = lists.map((list) => {
+            let members: Term[]
+            try {
+                members = findMatchingObjectsFromCollection(quads, list)
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            } catch (ex: unknown) {
+                throw `Expected an RDF list for property ${property.name} on ${collapseLast(id.value)} (sh:memberShape), found ${collapseLast(list.value)}`
+            }
+            if (property.member) {
+                return this.convertValues(quads, others, members, {
+                    name: property.name,
+                    path: property.path,
+                    ...property.member,
+                })
+            }
+            return members.map((member) =>
+                definition.addToDocument(member, quads, others),
+            )
+        })
+
+        editing[property.name] = <DocumentValue | DocumentValue[]>(
+            (<unknown>handleAccordingToProperty(values, property, id))
+        )
     }
 
     addToDocument(
@@ -382,10 +532,19 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
         this.addToContext(out)
 
         for (const property of this.properties) {
+            // SHACL 1.2: sh:codeType goes before the nested objects
+            if (property.memberShape && !property.codeType) {
+                this.handleMemberShapeProperty(quads, others, property, out, id)
+                continue
+            }
+
             // TODO: handle collections here as well
+            // A path is passed whole: a sequence path is itself an RDF list
+            const builtIn = builtInCodeType(property)
+            const isPath = builtIn === RDFL.Path || builtIn === RDFL.PathLens
             let values = isNestedProperty(property)
                 ? [id]
-                : findMatchingObjects(quads, id, property)
+                : findMatchingObjects(quads, id, property, !isPath)
 
             // Like rdf-lens, the default is used when the data has no value,
             // and counts for sh:minCount
@@ -393,37 +552,11 @@ export class PlainDefinition extends Definition implements ProcessorDTO {
                 values = findDefaultValues(quads, property.defaultValue)
             }
 
-            // Like rdf-lens, sh:codeType goes before sh:node and sh:class
-            // (SHACL 1.2)
-            if ((property.node || property.clazz) && !property.codeType) {
-                this.handleNestedProperty(
-                    quads,
-                    others,
-                    values,
-                    property,
-                    out,
-                    id,
-                )
-                continue
-            }
-
-            if (property.datatype || property.codeType || property.nodeKind) {
-                const items = values.map((v) =>
-                    handleAccordingToDatatype(
-                        v.value,
-                        property.codeType ?? property.datatype,
-                    ),
-                )
-
-                out[property.name] = handleAccordingToProperty(
-                    items,
-                    property,
-                    id,
-                )
-                continue
-            }
-
-            throw `No sh:node, sh:class, sh:datatype, sh:nodeKind nor sh:codeType for property ${property.name}`
+            out[property.name] = handleAccordingToProperty(
+                this.convertValues(quads, others, values, property),
+                property,
+                id,
+            )
         }
 
         return out
@@ -460,22 +593,24 @@ function findMatchingObjects(
     quads: Quad[],
     id: Term,
     property: PropertyDTO,
+    unrollLists = true,
 ): Quad_Object[] {
-    return quads
+    const objects = quads
         .filter(
             (x) => x.subject.equals(id) && x.predicate.equals(property.path.id),
         )
         .map((x) => x.object)
-        .flatMap((object) => {
-            try {
-                // Check if it is a collection
-                return findMatchingObjectsFromCollection(quads, object)
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            } catch (ex: unknown) {
-                // Else it is not
-                return [object]
-            }
-        })
+    if (!unrollLists) return objects
+    return objects.flatMap((object) => {
+        try {
+            // Check if it is a collection
+            return findMatchingObjectsFromCollection(quads, object)
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (ex: unknown) {
+            // Else it is not
+            return [object]
+        }
+    })
 }
 
 /**
@@ -536,11 +671,11 @@ export type Definitions = { [id: string]: Definition }
  *
  * The function automatically includes the following built-in definitions:
  * - CBD (Concise Bounded Description): Extracts a subgraph about a resource
- * - Path: Handles RDF path expressions
+ * - Path and PathLens: Handles RDF path expressions
  * - TypedExtract: Extracts typed literals from RDF data
  *
  * Node shapes are found by their target classes and target subjects. Node
- * shapes referred to with sh:node, which need no sh:targetClass nor
+ * shapes referred to with sh:node or sh:memberShape, which need no sh:targetClass nor
  * rdf:type and may be inline blank nodes, are also found by their own key
  * (see {@link nodeShapeKey}).
  *
@@ -558,7 +693,11 @@ export function parse_processors(quads: Quad[]): Definitions {
         .map((q) => q.subject)
     // A node shape without any triples, a typo for example, is not defined
     const referred = quads
-        .filter((q) => q.predicate.equals(SHACL_NODE))
+        .filter(
+            (q) =>
+                q.predicate.equals(SHACL_NODE) ||
+                q.predicate.equals(SHACL_MEMBER_SHAPE),
+        )
         .map((q) => q.object)
         .filter((shape) => quads.some((q) => q.subject.equals(shape)))
 
@@ -590,10 +729,40 @@ export function parse_processors(quads: Quad[]): Definitions {
         }
     }
 
+    for (const definition of new Set(Object.values(dtos))) {
+        for (const property of (<PlainDefinition>definition).properties) {
+            if (property.memberShape) {
+                property.member = memberConstraints(quads, property.memberShape)
+            }
+        }
+    }
+
     dtos[RDFL.CBD] = new CBDDefinition(RDFL.CBD)
     dtos[RDFL.Path] = new CBDDefinition(RDFL.Path)
+    dtos[RDFL.PathLens] = new CBDDefinition(RDFL.PathLens)
     dtos[RDFL.TypedExtract] = new CBDDefinition(RDFL.TypedExtract)
     dtos[RDFL.Context] = new CBDDefinition(RDFL.CBD)
 
     return dtos
+}
+
+/**
+ * The constraints of a member shape without properties of its own, which
+ * constrain the members themselves, like rdf-lens. Undefined for a member
+ * shape with properties, whose members are nested objects.
+ */
+function memberConstraints(quads: Quad[], shape: Term): MemberDTO | undefined {
+    const object = (predicate: Term) =>
+        quads.find(
+            (q) => q.subject.equals(shape) && q.predicate.equals(predicate),
+        )?.object
+    if (object(SHACL.terms.property)) return undefined
+    const member: MemberDTO = {
+        clazz: object(SHACL.terms.custom('class')),
+        node: object(SHACL_NODE),
+        datatype: object(SHACL.terms.datatype),
+        nodeKind: object(SHACL.terms.nodeKind),
+        codeType: object(SHACL.terms.custom('codeType')),
+    }
+    return Object.values(member).some((x) => x) ? member : undefined
 }
