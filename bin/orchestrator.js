@@ -92,6 +92,13 @@ function parseArgs(args) {
         throw new Error('Invalid port number')
     }
 
+    const noValidationIdx = args.findIndex((v) => v === '--no-validation')
+    let validation = true
+    if (noValidationIdx !== -1) {
+        args.splice(noValidationIdx, 1)
+        validation = false
+    }
+
     let provenanceLocation
     const provenanceFlagIdx = args.findIndex((v) => v === '--provenance')
     if (provenanceFlagIdx !== -1) {
@@ -108,7 +115,13 @@ function parseArgs(args) {
         )
     }
     const location = path.resolve(args[2])
-    return { port, portExplicit, location, provenanceLocation }
+    return {
+        port,
+        portExplicit,
+        location,
+        provenanceLocation,
+        validation,
+    }
 }
 
 let parsed
@@ -123,11 +136,11 @@ try {
     process.exit(1)
 }
 
-const { port, portExplicit, location, provenanceLocation } = parsed
+const { port, portExplicit, location, provenanceLocation, validation } = parsed
 
 try {
     const resolvedPort = await resolvePort(port, portExplicit)
-    await start(location, resolvedPort, provenanceLocation)
+    await start(location, resolvedPort, provenanceLocation, validation)
 } catch (ex) {
     if (ex instanceof Error) {
         console.error(ex.stack)

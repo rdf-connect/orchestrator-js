@@ -45,6 +45,7 @@ In addition to the command above, the CLI also supports the following parameters
 
 - `--port`: Port number on which to initialize the gRPC server (default: 50051)
 - `--provenance`: Filesystem path to store the provenance metadata to. No provenance is stored when not specified.
+- `--no-validation`: Skip validating the pipeline before it starts. By default, the orchestrator validates the pipeline, after substituting environment variables, against the SHACL shapes of the processors and runners it imports, and reports every processor whose type none of them describes. Any violation stops the pipeline before a runner is started, and results of shapes with a lower `sh:severity`, such as `sh:Warning`, are logged without stopping it.
 
 ## Configuration
 
