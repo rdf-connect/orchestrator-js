@@ -37,7 +37,7 @@ export function prettyTurtle(triples: Quad[]): Promise<string> {
     return new Promise((res, rej) => {
         writer.end((e, r) => {
             if (e) rej(e)
-            else res(r)
+            else res(r ?? '')
         })
     })
 }
