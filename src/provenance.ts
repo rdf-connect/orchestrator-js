@@ -15,6 +15,8 @@ const provenanceRules = $INLINE_FILE('./provenanceRules.n3')
 const logger = getLoggerFor(['provenance'])
 
 const XSD_DATETIME = 'http://www.w3.org/2001/XMLSchema#dateTime'
+// Helper terms of the provenance rules, which are not part of the provenance.
+const INTERNAL = 'https://w3id.org/rdf-connect/provenance-rules#'
 
 /**
  * Creates an `xsd:dateTime` literal for the given date.
@@ -59,7 +61,7 @@ export function inferProvenance(
             // Sometimes we have `sh:path ( )` in our input. We need to skip such input as we cannot derive an OWL definition for that.
             skipUnsupportedRdfJs: true,
             onDerived: ({ quad }) => {
-                if (!quad) {
+                if (!quad || quad.predicate.value.startsWith(INTERNAL)) {
                     return
                 }
 
@@ -77,6 +79,29 @@ export function inferProvenance(
 }
 
 /**
+ * Serializes quads, in the format derived from the extension of `path`.
+ * The quads are copied first: streamifyArray empties the array it is given,
+ * and the same provenance quads are serialized more than once.
+ *
+ * @param {Quad[]} quads - The quads to serialize; left unchanged.
+ * @param {string} path - A file name whose extension selects the format.
+ * @param {Record<string, string>} [prefixes] - Prefixes to use during serialization.
+ * @returns {Promise<string>} The serialized quads.
+ */
+export async function serializeQuads(
+    quads: Quad[],
+    path: string,
+    prefixes?: Record<string, string>,
+): Promise<string> {
+    return stringifyStream(
+        rdfSerializer.serialize(streamifyArray(quads.slice()), {
+            path,
+            prefixes,
+        }),
+    )
+}
+
+/**
  * Serializes the provenance quads and writes them to the given location.
  * The serialization format is derived from the file extension.
  *
@@ -90,11 +115,10 @@ export async function writeProvenance(
     location: string,
     prefixes?: Record<string, string>,
 ): Promise<void> {
-    const provenanceString = await stringifyStream(
-        rdfSerializer.serialize(streamifyArray(provenance.slice()), {
-            path: location,
-            prefixes,
-        }),
+    const provenanceString = await serializeQuads(
+        provenance,
+        location,
+        prefixes,
     )
     await writeFile(location, provenanceString, { encoding: 'utf8' })
 }
