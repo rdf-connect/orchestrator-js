@@ -21,6 +21,7 @@ export const RDFC = createNamespace(
     (x) => x,
     'Reader',
     'Writer',
+    'processor',
 )
 
 export const PROV: Namespace<

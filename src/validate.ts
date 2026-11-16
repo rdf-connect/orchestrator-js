@@ -8,6 +8,8 @@ import { Quad, Term } from '@rdfjs/types'
 import type { ShaclResult } from 'shacl-engine/Validator.js'
 import { DataFactory } from 'rdf-data-factory'
 import { Store } from 'n3'
+import { RDF, SHACL } from '@treecg/types'
+import { RDFC } from './util.js'
 import { getLoggerFor, collapseLast } from './logUtil.js'
 import { modelQuads } from './model.js'
 
@@ -54,10 +56,6 @@ function contractQuads(quads: Quad[]): Quad[] {
     )
 }
 
-const SHACL = 'http://www.w3.org/ns/shacl#'
-const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
-const RDFC_PROCESSOR = 'https://w3id.org/rdf-connect#processor'
-
 /**
  * Processors whose type no imported contract targets.
  *
@@ -69,13 +67,13 @@ const RDFC_PROCESSOR = 'https://w3id.org/rdf-connect#processor'
 function uncontracted(quads: Quad[], shapes: Quad[]): Violation[] {
     const targeted = new Set(
         shapes
-            .filter((q) => q.predicate.value === SHACL + 'targetClass')
+            .filter((q) => q.predicate.value === SHACL.targetClass)
             .map((q) => q.object.value),
     )
     const processors: Term[] = []
     for (const q of quads) {
         if (
-            q.predicate.value === RDFC_PROCESSOR &&
+            q.predicate.value === RDFC.processor &&
             !processors.some((p) => p.equals(q.object))
         ) {
             processors.push(q.object)
@@ -88,7 +86,7 @@ function uncontracted(quads: Quad[], shapes: Quad[]): Violation[] {
             .filter(
                 (q) =>
                     q.subject.equals(processor) &&
-                    q.predicate.value === RDF_TYPE,
+                    q.predicate.value === RDF.type,
             )
             .map((q) => q.object.value)
         if (types.some((t) => targeted.has(t))) continue
@@ -123,7 +121,7 @@ export async function validatePipeline(quads: Quad[]): Promise<Violation[]> {
     const report = await validator.validate({ dataset: store(quads) })
 
     const results = report.results.map((r: ShaclResult) => {
-        const severity = r.severity?.value ?? SHACL + 'Violation'
+        const severity = r.severity?.value ?? SHACL.custom('Violation')
 
         return {
             focusNode: r.focusNode?.value,
