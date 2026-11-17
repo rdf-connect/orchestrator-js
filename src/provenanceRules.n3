@@ -1,3 +1,4 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
 @prefix owl: <http://www.w3.org/2002/07/owl#>.
 @prefix prov: <http://www.w3.org/ns/prov#>.
@@ -34,43 +35,117 @@
   ?S ?P ?O. }
     => { ?O ?Q ?S. }.
 
-# The configuration of a processor: the processor itself, and the blank nodes
-# it reaches, directly or as members of an RDF list, such as rdfc:channels [ ... ].
-# Named nodes are not followed: they are resources of their own, such as other
-# processors, and their channels are not this processor's.
+# The configuration of a processor: the processor itself, and every node it
+# reaches through a property that one of its shapes describes with a nested
+# shape, such as rdfc:channels sh:class ex:Channels. The walk follows the shapes,
+# not the kind of node: a configuration node may be a blank node or an IRI.
+# Properties that no shape describes are not followed, nor are values that are
+# processors themselves, so the channels of one processor are never credited
+# to another.
+
+# The shape of the values of a property: through sh:class and the shape that
+# targets that class, or directly through sh:node.
+{
+  ?PS sh:class ?C.
+  ?S sh:targetClass ?C.
+} => {
+  ?PS internal:valueShape ?S.
+}.
+
+{
+  ?PS sh:node ?S.
+} => {
+  ?PS internal:valueShape ?S.
+}.
+
 {
   ?P a rdfc:Processor.
 } => {
   ?P internal:configuration ?P.
 }.
 
+# A configuration node with a type has the shapes that target that type.
 {
   ?P internal:configuration ?N.
-  ?N ?p ?B.
-  ?B log:rawType ?T.
-  ?T list:in (log:LabeledBlankNode log:UnlabeledBlankNode).
+  ?N a ?C.
+  ?S sh:targetClass ?C.
 } => {
-  ?P internal:configuration ?B.
+  ?N internal:shape ?S.
+}.
+
+# A nested property, sh:path ( ), applies its shape to the same node.
+{
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path rdf:nil;
+      internal:valueShape ?S2.
+} => {
+  ?N internal:shape ?S2.
+}.
+
+# A value of a property that some shape describes with a nested shape can be
+# followed, unless it is a processor itself. This negation lives in its own
+# rule, which does not depend on the walk below: eyeling evaluates
+# log:notIncludes against a snapshot of the closure, so in the recursive walk
+# it would stop the walk after its first step.
+{
+  ?PS sh:path ?p;
+      internal:valueShape ?S2.
+  ?N ?p ?M.
+  ?SCOPE log:notIncludes { ?M a rdfc:Processor. }.
+} => {
+  ?M internal:followable true.
+}.
+
+{
+  ?PS sh:path ?p;
+      internal:valueShape ?S2.
+  ?N ?p ?L.
+  ?L list:member ?M.
+  ?SCOPE log:notIncludes { ?M a rdfc:Processor. }.
+} => {
+  ?M internal:followable true.
+}.
+
+# Follow a described property, to its value or to each member of a list.
+{
+  ?P internal:configuration ?N.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?p;
+      internal:valueShape ?S2.
+  ?N ?p ?M.
+  ?M internal:followable true.
+} => {
+  ?P internal:configuration ?M.
+  ?M internal:shape ?S2.
 }.
 
 {
   ?P internal:configuration ?N.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?p;
+      internal:valueShape ?S2.
   ?N ?p ?L.
-  ?L list:member ?B.
-  ?B log:rawType ?T.
-  ?T list:in (log:LabeledBlankNode log:UnlabeledBlankNode).
+  ?L list:member ?M.
+  ?M internal:followable true.
 } => {
-  ?P internal:configuration ?B.
+  ?P internal:configuration ?M.
+  ?M internal:shape ?S2.
 }.
 
 # A channel in the configuration of a processor, given directly or in a list,
-# for a parameter that its shape declares as a reader or a writer.
+# for a property that the shape of that configuration node declares as a
+# reader or a writer.
 {
   ?P internal:configuration ?N.
   ?N ?input ?C.
   ?C a rdfc:Reader.
-  ?S sh:path ?input;
-     sh:class rdfc:Reader.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?input;
+      sh:class rdfc:Reader.
 } => {
   ?P prov:used ?C.
 }.
@@ -80,8 +155,10 @@
   ?N ?input ?L.
   ?L list:member ?C.
   ?C a rdfc:Reader.
-  ?S sh:path ?input;
-     sh:class rdfc:Reader.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?input;
+      sh:class rdfc:Reader.
 } => {
   ?P prov:used ?C.
 }.
@@ -90,8 +167,10 @@
   ?P internal:configuration ?N.
   ?N ?output ?C.
   ?C a rdfc:Writer.
-  ?S sh:path ?output;
-     sh:class rdfc:Writer.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?output;
+      sh:class rdfc:Writer.
 } => {
   ?P prov:generated ?C.
 }.
@@ -101,8 +180,10 @@
   ?N ?output ?L.
   ?L list:member ?C.
   ?C a rdfc:Writer.
-  ?S sh:path ?output;
-     sh:class rdfc:Writer.
+  ?N internal:shape ?S.
+  ?S sh:property ?PS.
+  ?PS sh:path ?output;
+      sh:class rdfc:Writer.
 } => {
   ?P prov:generated ?C.
 }.
