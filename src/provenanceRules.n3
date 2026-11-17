@@ -42,12 +42,56 @@
 # Properties that no shape describes are not followed, nor are values that are
 # processors themselves, so the channels of one processor are never credited
 # to another.
+#
+# The shapes of a configuration node are kept per processor, as
+# (?P ?N) internal:shape ?S: a node that two processors reach through
+# different shapes only has, for each processor, the shapes of that processor.
+# Triples with a list as subject cannot be represented in RDF/JS, so they never
+# reach the result.
 
-# The shape of the values of a property: through sh:class and the shape that
-# targets that class, or directly through sh:node.
+# The value of a property that a shape declares, or each member of a list value.
+{
+  ?PS sh:path ?p.
+  ?N ?p ?M.
+} => {
+  (?N ?p) internal:value ?M.
+}.
+
+{
+  ?PS sh:path ?p.
+  ?N ?p ?L.
+  ?L list:member ?M.
+} => {
+  (?N ?p) internal:value ?M.
+}.
+
+# The classes a shape targets: through sh:targetClass, or implicitly, when the
+# shape is a class itself.
+{
+  ?S sh:targetClass ?C.
+} => {
+  ?S internal:targets ?C.
+}.
+
+{
+  ?S a sh:NodeShape, rdfs:Class.
+} => {
+  ?S internal:targets ?S.
+}.
+
+# The shape of the values of a property: through sh:class and the shapes that
+# target that class or one of its superclasses, or directly through sh:node.
 {
   ?PS sh:class ?C.
-  ?S sh:targetClass ?C.
+  ?S internal:targets ?C.
+} => {
+  ?PS internal:valueShape ?S.
+}.
+
+{
+  ?PS sh:class ?C.
+  ?C rdfs:subClassOf ?D.
+  ?S internal:targets ?D.
 } => {
   ?PS internal:valueShape ?S.
 }.
@@ -58,29 +102,49 @@
   ?PS internal:valueShape ?S.
 }.
 
+# A configuration node with a type has, for that processor, the shapes that
+# target the type. Subclasses are covered by the subclass rule above.
 {
   ?P a rdfc:Processor.
+  ?P a ?C.
+  ?S internal:targets ?C.
 } => {
-  ?P internal:configuration ?P.
+  (?P ?P) internal:shape ?S.
 }.
 
-# A configuration node with a type has the shapes that target that type.
 {
-  ?P internal:configuration ?N.
+  (?P ?N) internal:shape ?S0.
   ?N a ?C.
-  ?S sh:targetClass ?C.
+  ?S internal:targets ?C.
 } => {
-  ?N internal:shape ?S.
+  (?P ?N) internal:shape ?S.
+}.
+
+# A shape that includes other shapes, through sh:node or sh:and, gives the
+# node those shapes too.
+{
+  (?P ?N) internal:shape ?S.
+  ?S sh:node ?S2.
+} => {
+  (?P ?N) internal:shape ?S2.
+}.
+
+{
+  (?P ?N) internal:shape ?S.
+  ?S sh:and ?L.
+  ?L list:member ?S2.
+} => {
+  (?P ?N) internal:shape ?S2.
 }.
 
 # A nested property, sh:path ( ), applies its shape to the same node.
 {
-  ?N internal:shape ?S.
+  (?P ?N) internal:shape ?S.
   ?S sh:property ?PS.
   ?PS sh:path rdf:nil;
       internal:valueShape ?S2.
 } => {
-  ?N internal:shape ?S2.
+  (?P ?N) internal:shape ?S2.
 }.
 
 # A value of a property that some shape describes with a nested shape can be
@@ -91,99 +155,45 @@
 {
   ?PS sh:path ?p;
       internal:valueShape ?S2.
-  ?N ?p ?M.
+  (?N ?p) internal:value ?M.
   ?SCOPE log:notIncludes { ?M a rdfc:Processor. }.
 } => {
   ?M internal:followable true.
 }.
 
+# Follow a described property to its values.
 {
-  ?PS sh:path ?p;
-      internal:valueShape ?S2.
-  ?N ?p ?L.
-  ?L list:member ?M.
-  ?SCOPE log:notIncludes { ?M a rdfc:Processor. }.
-} => {
-  ?M internal:followable true.
-}.
-
-# Follow a described property, to its value or to each member of a list.
-{
-  ?P internal:configuration ?N.
-  ?N internal:shape ?S.
+  (?P ?N) internal:shape ?S.
   ?S sh:property ?PS.
   ?PS sh:path ?p;
       internal:valueShape ?S2.
-  ?N ?p ?M.
+  (?N ?p) internal:value ?M.
   ?M internal:followable true.
 } => {
-  ?P internal:configuration ?M.
-  ?M internal:shape ?S2.
+  (?P ?M) internal:shape ?S2.
 }.
 
+# A channel in the configuration of a processor, for a property that a shape
+# of that configuration node, for that processor, declares as a reader or a
+# writer.
 {
-  ?P internal:configuration ?N.
-  ?N internal:shape ?S.
+  (?P ?N) internal:shape ?S.
   ?S sh:property ?PS.
   ?PS sh:path ?p;
-      internal:valueShape ?S2.
-  ?N ?p ?L.
-  ?L list:member ?M.
-  ?M internal:followable true.
-} => {
-  ?P internal:configuration ?M.
-  ?M internal:shape ?S2.
-}.
-
-# A channel in the configuration of a processor, given directly or in a list,
-# for a property that the shape of that configuration node declares as a
-# reader or a writer.
-{
-  ?P internal:configuration ?N.
-  ?N ?input ?C.
-  ?C a rdfc:Reader.
-  ?N internal:shape ?S.
-  ?S sh:property ?PS.
-  ?PS sh:path ?input;
       sh:class rdfc:Reader.
+  (?N ?p) internal:value ?C.
+  ?C a rdfc:Reader.
 } => {
   ?P prov:used ?C.
 }.
 
 {
-  ?P internal:configuration ?N.
-  ?N ?input ?L.
-  ?L list:member ?C.
-  ?C a rdfc:Reader.
-  ?N internal:shape ?S.
+  (?P ?N) internal:shape ?S.
   ?S sh:property ?PS.
-  ?PS sh:path ?input;
-      sh:class rdfc:Reader.
-} => {
-  ?P prov:used ?C.
-}.
-
-{
-  ?P internal:configuration ?N.
-  ?N ?output ?C.
-  ?C a rdfc:Writer.
-  ?N internal:shape ?S.
-  ?S sh:property ?PS.
-  ?PS sh:path ?output;
+  ?PS sh:path ?p;
       sh:class rdfc:Writer.
-} => {
-  ?P prov:generated ?C.
-}.
-
-{
-  ?P internal:configuration ?N.
-  ?N ?output ?L.
-  ?L list:member ?C.
+  (?N ?p) internal:value ?C.
   ?C a rdfc:Writer.
-  ?N internal:shape ?S.
-  ?S sh:property ?PS.
-  ?PS sh:path ?output;
-      sh:class rdfc:Writer.
 } => {
   ?P prov:generated ?C.
 }.

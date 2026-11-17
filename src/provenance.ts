@@ -58,7 +58,9 @@ export function inferProvenance(
         },
         {
             rdfjs: true,
-            // Sometimes we have `sh:path ( )` in our input. We need to skip such input as we cannot derive an OWL definition for that.
+            // Skip derived triples that RDF/JS cannot represent, such as the
+            // helper triples of the rules that have a list as subject. The
+            // rules still see the whole input, including `sh:path ( )`.
             skipUnsupportedRdfJs: true,
             onDerived: ({ quad }) => {
                 if (!quad || quad.predicate.value.startsWith(INTERNAL)) {
