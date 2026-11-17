@@ -93,6 +93,7 @@ ex:log a ex:Log;
  * reachable only through properties that their shapes do not describe.
  */
 const NESTED = `
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
 @prefix sh: <http://www.w3.org/ns/shacl#>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
@@ -154,6 +155,42 @@ ex:Leaky rdfc:jsImplementationOf rdfc:Processor.
   sh:targetClass ex:Leaky;
   sh:property [ sh:path ex:name; sh:datatype xsd:string ].
 
+# Shapes that include other shapes, through sh:node and sh:and.
+ex:ReaderShape a sh:NodeShape;
+  sh:property [ sh:path rdfc:reader; sh:class rdfc:Reader ].
+ex:Based rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Based;
+  sh:node ex:ReaderShape.
+ex:Joined rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Joined;
+  sh:and ( ex:ReaderShape ).
+
+# A shape that is its own target class.
+ex:Implicit a sh:NodeShape, rdfs:Class;
+  rdfc:jsImplementationOf rdfc:Processor;
+  sh:property [ sh:path rdfc:writer; sh:class rdfc:Writer ].
+
+# A nested shape that targets a superclass of the class of the property.
+ex:SpecialChannels rdfs:subClassOf ex:Channels.
+ex:Sub rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Sub;
+  sh:property [ sh:path rdfc:channels; sh:class ex:SpecialChannels ].
+
+# Two processors that share a named node, through different shapes.
+ex:Names a sh:NodeShape;
+  sh:property [ sh:path ex:name; sh:datatype xsd:string ].
+ex:One rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:One;
+  sh:property [ sh:path ex:cfg; sh:class ex:Channels ].
+ex:Other rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Other;
+  sh:property [ sh:path ex:cfg; sh:node ex:Names ].
+
 ex:buckets a rdfc:Reader, rdfc:Writer.
 ex:merged a rdfc:Reader, rdfc:Writer.
 ex:fanned a rdfc:Reader, rdfc:Writer.
@@ -187,6 +224,25 @@ ex:chain a ex:Chain;
 ex:leaky a ex:Leaky;
   ex:name "leaky";
   rdfc:dataInput ex:channel.
+
+ex:based a ex:Based;
+  rdfc:reader ex:buckets.
+
+ex:joined a ex:Joined;
+  rdfc:reader ex:merged.
+
+ex:implicit a ex:Implicit;
+  rdfc:writer ex:buckets.
+
+ex:sub a ex:Sub;
+  rdfc:channels [ rdfc:dataInput ex:merged ].
+
+ex:one a ex:One;
+  ex:cfg ex:shared.
+ex:other a ex:Other;
+  ex:cfg ex:shared.
+ex:shared ex:name "shared";
+  rdfc:dataInput ex:fanned.
 `
 
 function infer(): Quad[] {
@@ -378,6 +434,37 @@ describe('inferProvenance', () => {
 
         test('only matches the properties of the shapes of the processor', () => {
             expect(dataflow(quads, EX + 'leaky')).toEqual([])
+        })
+
+        test('includes the shapes that a shape refers to with sh:node', () => {
+            expect(dataflow(quads, EX + 'based')).toEqual([
+                `${PROV}used ${EX}buckets`,
+            ])
+        })
+
+        test('includes the shapes that a shape refers to with sh:and', () => {
+            expect(dataflow(quads, EX + 'joined')).toEqual([
+                `${PROV}used ${EX}merged`,
+            ])
+        })
+
+        test('uses a shape that is its own target class', () => {
+            expect(dataflow(quads, EX + 'implicit')).toEqual([
+                `${PROV}generated ${EX}buckets`,
+            ])
+        })
+
+        test('uses the shapes that target a superclass of sh:class', () => {
+            expect(dataflow(quads, EX + 'sub')).toEqual([
+                `${PROV}used ${EX}merged`,
+            ])
+        })
+
+        test('keeps the shapes of a shared node per processor', () => {
+            expect(dataflow(quads, EX + 'one')).toEqual([
+                `${PROV}used ${EX}fanned`,
+            ])
+            expect(dataflow(quads, EX + 'other')).toEqual([])
         })
 
         test('leaves the helper terms of the rules out of the result', () => {
