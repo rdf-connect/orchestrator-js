@@ -88,12 +88,13 @@ ex:log a ex:Log;
 `
 
 /**
- * Processors whose channels are not direct parameters: nested in a
- * configuration node, given as a list, or held by named nodes that are not
- * part of the processor's own configuration.
+ * Processors whose channels are not direct parameters: nested in a blank or
+ * named configuration node that their shapes describe, given as a list, or
+ * reachable only through properties that their shapes do not describe.
  */
 const NESTED = `
 @prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
 @prefix rdfc: <https://w3id.org/rdf-connect#>.
 @prefix ex: <http://example.org/#>.
 
@@ -113,9 +114,49 @@ ex:Merge rdfc:jsImplementationOf rdfc:Processor.
               [ sh:path rdfc:writer; sh:class rdfc:Writer ].
 
 ex:Wrapper rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Wrapper;
+  sh:property [ sh:path rdfc:channels; sh:class ex:Channels ].
+
+# A list of named groups, each with a blank configuration node.
+ex:Fan rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Fan;
+  sh:property [ sh:path ex:groups; sh:class ex:Group ].
+[] a sh:NodeShape;
+  sh:targetClass ex:Group;
+  sh:property [ sh:path rdfc:channels; sh:class ex:Channels ].
+
+# A nested shape given with sh:node instead of sh:class.
+ex:Tap rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Tap;
+  sh:property [ sh:path rdfc:channels; sh:node ex:TapChannels ].
+ex:TapChannels a sh:NodeShape;
+  sh:property [ sh:path rdfc:dataInput; sh:class rdfc:Reader ].
+
+# A nested property, sh:path ( ): its shape applies to the processor itself.
+ex:Flat rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Flat;
+  sh:property [ sh:path (); sh:class ex:Channels ].
+
+# A shape-described property whose value is another processor.
+ex:Chain rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Chain;
+  sh:property [ sh:path ex:next; sh:class ex:Log ].
+
+# A processor whose shape does not declare rdfc:dataInput, even though the
+# shape of ex:Channels does.
+ex:Leaky rdfc:jsImplementationOf rdfc:Processor.
+[] a sh:NodeShape;
+  sh:targetClass ex:Leaky;
+  sh:property [ sh:path ex:name; sh:datatype xsd:string ].
 
 ex:buckets a rdfc:Reader, rdfc:Writer.
 ex:merged a rdfc:Reader, rdfc:Writer.
+ex:fanned a rdfc:Reader, rdfc:Writer.
 
 ex:bucketize a ex:Bucket;
   rdfc:channels [ rdfc:dataInput ex:channel; rdfc:dataOutput ex:buckets ].
@@ -124,11 +165,28 @@ ex:merge a ex:Merge;
   rdfc:readers ( ex:channel ex:buckets );
   rdfc:writer ex:merged.
 
-# Refers to another processor, and to a named configuration node.
+# A named configuration node, and a property that no shape describes.
 ex:wrapper a ex:Wrapper;
   ex:delegate ex:log;
   rdfc:channels ex:sharedChannels.
 ex:sharedChannels rdfc:dataInput ex:merged.
+
+ex:fan a ex:Fan;
+  ex:groups ( ex:group ).
+ex:group rdfc:channels [ rdfc:dataOutput ex:fanned ].
+
+ex:tap a ex:Tap;
+  rdfc:channels [ rdfc:dataInput ex:buckets ].
+
+ex:flat a ex:Flat;
+  rdfc:dataInput ex:fanned.
+
+ex:chain a ex:Chain;
+  ex:next ex:log.
+
+ex:leaky a ex:Leaky;
+  ex:name "leaky";
+  rdfc:dataInput ex:channel.
 `
 
 function infer(): Quad[] {
@@ -145,6 +203,19 @@ function has(quads: Quad[], s: string, p: string, o: string): boolean {
             q.predicate.value === p &&
             q.object.value === o,
     )
+}
+
+/** The prov:used and prov:generated statements of a processor, sorted. */
+function dataflow(quads: Quad[], processor: string): string[] {
+    return quads
+        .filter(
+            (q) =>
+                q.subject.value === processor &&
+                (q.predicate.value === PROV + 'used' ||
+                    q.predicate.value === PROV + 'generated'),
+        )
+        .map((q) => `${q.predicate.value} ${q.object.value}`)
+        .sort()
 }
 
 describe('inferProvenance', () => {
@@ -271,14 +342,42 @@ describe('inferProvenance', () => {
             ).toBe(true)
         })
 
-        test('does not follow named nodes, such as other processors', () => {
-            const used = quads.filter(
-                (q) =>
-                    q.subject.value === EX + 'wrapper' &&
-                    (q.predicate.value === PROV + 'used' ||
-                        q.predicate.value === PROV + 'generated'),
+        test('follows a named configuration node', () => {
+            expect(
+                has(quads, EX + 'wrapper', PROV + 'used', EX + 'merged'),
+            ).toBe(true)
+        })
+
+        test('follows a named node in a list, and a blank node beneath it', () => {
+            expect(
+                has(quads, EX + 'fan', PROV + 'generated', EX + 'fanned'),
+            ).toBe(true)
+        })
+
+        test('follows a nested shape given with sh:node', () => {
+            expect(has(quads, EX + 'tap', PROV + 'used', EX + 'buckets')).toBe(
+                true,
             )
-            expect(used).toEqual([])
+        })
+
+        test('applies a nested property, sh:path ( ), to the same node', () => {
+            expect(has(quads, EX + 'flat', PROV + 'used', EX + 'fanned')).toBe(
+                true,
+            )
+        })
+
+        test('does not follow properties that no shape describes', () => {
+            expect(dataflow(quads, EX + 'wrapper')).toEqual([
+                `${PROV}used ${EX}merged`,
+            ])
+        })
+
+        test('does not follow into another processor', () => {
+            expect(dataflow(quads, EX + 'chain')).toEqual([])
+        })
+
+        test('only matches the properties of the shapes of the processor', () => {
+            expect(dataflow(quads, EX + 'leaky')).toEqual([])
         })
 
         test('leaves the helper terms of the rules out of the result', () => {
