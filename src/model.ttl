@@ -23,7 +23,7 @@ _:id sh:path ( );
   sh:property [
     sh:path rdfc:instantiates;
     sh:name "instantiator";
-    sh:class rdfl:TypedExtract;
+    sh:codeType rdfl:TypedExtract;
     sh:maxCount 1;
     sh:minCount 1;
   ], [
