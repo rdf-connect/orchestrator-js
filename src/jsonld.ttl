@@ -16,7 +16,7 @@
     sh:path ( );
     sh:minCount 1;
     sh:maxCount 1;
-    sh:class rdfl:CBD;
+    sh:codeType rdfl:CBD;
   ].
 
 [ ] a sh:NodeShape;
