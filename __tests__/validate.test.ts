@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Parser } from 'n3'
+import { envReplace } from 'rdf-lens'
 import { assertValid, validatePipeline } from '../lib/validate.js'
 import { modelQuads } from '../lib/model.js'
 
@@ -117,6 +118,58 @@ ex:proc a ex:Loose; rdfc:file <./somewhere.js>.
         // model.ttl uses sh:path ( ) and requires values the orchestrator
         // supplies during extraction. Passing it alone must stay quiet.
         expect(await validatePipeline([...modelQuads])).toEqual([])
+    })
+})
+
+describe('environment variables', () => {
+    const contract = `
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfl: <https://w3id.org/rdf-lens/ontology#>.
+@prefix ex: <http://example.org/#>.
+[] a sh:NodeShape;
+  sh:targetClass ex:Counter;
+  sh:property [
+    sh:path rdfc:count;
+    sh:datatype xsd:integer;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ].
+`
+
+    test('are typed after the shape of their property', async () => {
+        // setPipeline substitutes environment variables before validating.
+        // A variable without rdfl:datatype must not become a plain string
+        // literal that an xsd:integer property then rejects.
+        const quads = envReplace().execute([
+            ...modelQuads,
+            ...new Parser().parse(
+                contract +
+                    `ex:proc a ex:Counter; rdfc:count [
+                        a rdfl:EnvVariable;
+                        rdfl:envKey "RDFC_TEST_UNSET_COUNT";
+                        rdfl:envDefault "5";
+                    ].`,
+            ),
+        ])
+        expect(await validatePipeline(quads)).toEqual([])
+    })
+
+    test('still report a value that is not of the declared datatype', async () => {
+        const quads = envReplace().execute([
+            ...modelQuads,
+            ...new Parser().parse(
+                contract +
+                    `ex:proc a ex:Counter; rdfc:count [
+                        a rdfl:EnvVariable;
+                        rdfl:envKey "RDFC_TEST_UNSET_COUNT";
+                        rdfl:envDefault "five";
+                    ].`,
+            ),
+        ])
+        const results = await validatePipeline(quads)
+        expect(results.some((r) => r.path?.endsWith('count'))).toBe(true)
     })
 })
 
