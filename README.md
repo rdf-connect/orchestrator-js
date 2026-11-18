@@ -177,6 +177,12 @@ npm run build
 npm run build -- --watch
 ```
 
+The `.ttl` and `.n3` files under `src/` are inlined into the build at compile
+time, so TypeScript does not see them as inputs. Before each build,
+`npm run build` drops `lib/.tsbuildinfo` if one of them is newer than it,
+forcing a full rebuild. Watch mode does not pick up edits to these files;
+restart it after changing one.
+
 ### Testing
 
 ```bash
