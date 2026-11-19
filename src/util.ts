@@ -137,31 +137,84 @@ async function parseArchive(
     return quads
 }
 
-const REMOTE_FETCH_TIMEOUT_MS = 10_000
+/**
+ * How long one attempt to fetch a remote import may take by default. JitPack,
+ * for one, can take well over ten seconds to answer for a snapshot it has not
+ * built or cached yet.
+ */
+const DEFAULT_REMOTE_FETCH_TIMEOUT_MS = 60_000
+/** How often a remote import is tried before giving up. */
+const REMOTE_FETCH_ATTEMPTS = 2
+/** After this long, tell the user what the orchestrator is waiting on. */
+const SLOW_FETCH_NOTICE_MS = 5_000
 
-async function fetchResource(url: URL): Promise<Uint8Array | ArrayBuffer> {
-    if (url.protocol === 'file:') {
-        return readFile(url)
-    } else if (url.protocol === 'http:' || url.protocol === 'https:') {
-        let resp: Response
-        try {
-            resp = await fetch(url, {
-                signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS),
-            })
-        } catch (ex) {
-            if (ex instanceof Error && ex.name === 'TimeoutError') {
-                throw new Error(
-                    `Timed out after ${REMOTE_FETCH_TIMEOUT_MS}ms fetching ${url.toString()}`,
-                    { cause: ex },
-                )
-            }
-            throw ex
-        }
+/**
+ * The timeout of one attempt to fetch a remote import, in milliseconds:
+ * RDFC_FETCH_TIMEOUT_MS when it is a positive number, otherwise the default.
+ */
+export function remoteFetchTimeoutMs(env = process.env): number {
+    const raw = env.RDFC_FETCH_TIMEOUT_MS
+    if (raw === undefined || raw.trim() === '') {
+        return DEFAULT_REMOTE_FETCH_TIMEOUT_MS
+    }
+    const ms = Number(raw)
+    if (!Number.isFinite(ms) || ms <= 0) {
+        logger.warn(
+            `Ignoring RDFC_FETCH_TIMEOUT_MS=${raw}, which is not a positive number of milliseconds`,
+        )
+        return DEFAULT_REMOTE_FETCH_TIMEOUT_MS
+    }
+    return ms
+}
+
+async function fetchRemote(url: URL, timeoutMs: number): Promise<ArrayBuffer> {
+    const notice = setTimeout(
+        () => logger.info(`Still fetching ${url.toString()}`),
+        SLOW_FETCH_NOTICE_MS,
+    )
+    try {
+        const resp = await fetch(url, {
+            signal: AbortSignal.timeout(timeoutMs),
+        })
         logger.debug(
             `${url.toString()} status ${resp.status} ${resp.statusText}`,
         )
         const blob = await resp.blob()
         return await blob.arrayBuffer()
+    } finally {
+        clearTimeout(notice)
+    }
+}
+
+async function fetchResource(url: URL): Promise<Uint8Array | ArrayBuffer> {
+    if (url.protocol === 'file:') {
+        return readFile(url)
+    } else if (url.protocol === 'http:' || url.protocol === 'https:') {
+        const timeoutMs = remoteFetchTimeoutMs()
+        for (let attempt = 1; ; attempt++) {
+            try {
+                return await fetchRemote(url, timeoutMs)
+            } catch (ex) {
+                const timedOut =
+                    ex instanceof Error && ex.name === 'TimeoutError'
+                // fetch rejects with a TypeError when the network fails
+                const transient = timedOut || ex instanceof TypeError
+                if (transient && attempt < REMOTE_FETCH_ATTEMPTS) {
+                    logger.warn(
+                        `${timedOut ? `Timed out after ${timeoutMs}ms` : 'Failed'} fetching ${url.toString()}, trying again`,
+                    )
+                    continue
+                }
+                if (timedOut) {
+                    throw new Error(
+                        `Timed out after ${timeoutMs}ms fetching ${url.toString()}, ${attempt} times; ` +
+                            'set RDFC_FETCH_TIMEOUT_MS to wait longer',
+                        { cause: ex },
+                    )
+                }
+                throw ex
+            }
+        }
     } else {
         throw new Error('No supported protocol ' + url.protocol)
     }
