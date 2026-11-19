@@ -47,6 +47,8 @@ In addition to the command above, the CLI also supports the following parameters
 - `--provenance`: Filesystem path to store the provenance metadata to. No provenance is stored when not specified.
 - `--no-validation`: Skip validating the pipeline before it starts. By default, the orchestrator validates the pipeline, after substituting environment variables, against the SHACL shapes of the processors and runners it imports, and reports every processor whose type none of them describes. Any violation stops the pipeline before a runner is started, and results of shapes with a lower `sh:severity`, such as `sh:Warning`, are logged without stopping it.
 
+The orchestrator fetches the remote files a pipeline imports with `owl:imports`, such as a runner's `index.jar` on JitPack. A fetch that times out or fails on the network is tried once more. Each attempt may take a minute by default; set the `RDFC_FETCH_TIMEOUT_MS` environment variable to change that, in milliseconds.
+
 ## Configuration
 
 Pipeline configurations are defined using RDF/Turtle format. Here's an example configuration:
